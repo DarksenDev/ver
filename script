@@ -1,1 +1,45 @@
 
+while wait() do
+	local plr = game.Players.LocalPlayer
+
+	local character = plr.Character
+	local pos = character.HumanoidRootPart.Position
+
+	while wait() do
+		character.Humanoid.MaxHealth = 999999
+		character.Humanoid.Health = 999999
+		local descendants = game.Workspace.Disaster:GetDescendants()
+
+		if #descendants ~= 0 then
+			local descendant = descendants[math.random(1, #descendants)]
+			if descendant:IsA("BasePart") then
+				character.Humanoid:MoveTo(descendant.Position)
+
+				character.Humanoid.MoveToFinished:Wait()
+
+				character:MoveTo(descendant.Position)
+			end
+		
+		else
+			local map = workspace:FindFirstChild("Map")
+
+			if map then
+				local descendants = map:GetDescendants()
+
+				if #descendants ~= 0 then
+					local descendant = descendants[math.random(1, #descendants)]
+					if descendant:IsA("BasePart") then
+						character.Humanoid:MoveTo(descendant.Position)
+
+						character.Humanoid.MoveToFinished:Wait()
+
+						character:MoveTo(descendant.Position)
+					end
+				end
+				
+			end
+		end
+	end
+
+
+end
