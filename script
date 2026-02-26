@@ -1,30 +1,23 @@
 local player = game.Players.LocalPlayer
-local playerGui = player:FindFirstChild("PlayerGui") or Instance.new("ScreenGui", player)
 
-script.Parent = playerGui
-
--- Функция, которая запускается для текущего персонажа
 local function characterLoop(character)
-    -- Ждём, пока у персонажа появится Humanoid (на всякий случай)
+    print("Character loop started for", character)
     local humanoid = character:WaitForChild("Humanoid")
     
-    while task.wait(1) do -- заменил wait() на task.wait() – современный вариант
-        -- Проверяем, что персонаж всё ещё существует и Humanoid жив
+    while task.wait(1) do
         if not character or not character.Parent then
-            break -- персонаж удалён, выходим из цикла
+            print("Character dead, exiting loop")
+            break
         end
         
-        -- Обновляем ссылку на Humanoid (на случай, если он удалился и создался заново? но такого обычно не бывает)
         humanoid = character:FindFirstChildWhichIsA("Humanoid")
         if not humanoid then break end
 
-        -- Устанавливаем здоровье через pcall
         pcall(function()
             humanoid.MaxHealth = 999999
             humanoid.Health = 999999
         end)
 
-        -- Ищем цель для перемещения
         local targetPart = nil
         local disaster = workspace:FindFirstChild("Disaster")
         if disaster then
@@ -50,26 +43,23 @@ local function characterLoop(character)
             end
         end
 
-        -- Перемещаемся, если есть цель и Humanoid
         if targetPart and humanoid then
             pcall(function()
                 humanoid:MoveTo(targetPart.Position)
-                -- Ждём окончания перемещения максимум 3 секунды
                 humanoid.MoveToFinished:Wait(3)
             end)
         end
     end
 end
 
--- При появлении персонажа запускаем цикл в отдельном потоке
 local function onCharacterAdded(character)
     coroutine.wrap(characterLoop)(character)
 end
 
--- Если персонаж уже есть, запускаем сразу
 if player.Character then
     onCharacterAdded(player.Character)
 end
 
--- Подписываемся на новые появления
 player.CharacterAdded:Connect(onCharacterAdded)
+
+print("Main script running, waiting for character events...")
