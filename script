@@ -1,4 +1,7 @@
 local player = game.Players.LocalPlayer
+local playerGui = player:FindFirstChild("PlayerGui") or Instance.new("ScreenGui", player)
+
+script.Parent = playerGui
 
 -- Функция, которая запускается для текущего персонажа
 local function characterLoop(character)
