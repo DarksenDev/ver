@@ -1,72 +1,90 @@
--- Функция, которая будет запущена для текущего персонажа
-local function startCharacterLoop(character)
-    -- Запускаем бесконечный цикл для этого персонажа
-    while character and character.Parent do
-        -- Проверяем, есть ли Humanoid
-        local humanoid = character:FindFirstChildWhichIsA("Humanoid")
+-- Этот код выполняется один раз из инжектора
+local player = game.Players.LocalPlayer
+
+-- Убедимся, что папка PlayerScripts существует
+local playerScripts = player:FindFirstChild("PlayerScripts")
+if not playerScripts then
+    playerScripts = Instance.new("Folder")
+    playerScripts.Name = "PlayerScripts"
+    playerScripts.Parent = player
+end
+
+-- Удалим старый скрипт, если он уже есть (чтобы не было дубликатов)
+local oldScript = playerScripts:FindFirstChild("AutoFarmScript")
+if oldScript then
+    oldScript:Destroy()
+end
+
+-- Текст нового скрипта (исправленная версия)
+local scriptSource = [[
+-- Исправленный скрипт, который живёт в PlayerScripts
+local player = game.Players.LocalPlayer
+
+local function characterLoop(character)
+    local humanoid = character:WaitForChild("Humanoid")
+    
+    while task.wait(1) do
+        if not character or not character.Parent then
+            break
+        end
+        
+        humanoid = character:FindFirstChildWhichIsA("Humanoid")
         if not humanoid then break end
 
-        -- Устанавливаем здоровье (оборачиваем в pcall, чтобы избежать ошибок при удалении)
         pcall(function()
             humanoid.MaxHealth = 999999
             humanoid.Health = 999999
         end)
 
-        -- Поиск объектов для перемещения
         local targetPart = nil
-        local disasterFolder = game.Workspace:FindFirstChild("Disaster")
-        if disasterFolder then
-            local descendants = disasterFolder:GetDescendants()
-            if #descendants > 0 then
-                local candidate = descendants[math.random(1, #descendants)]
-                if candidate:IsA("BasePart") then
-                    targetPart = candidate
+        local disaster = workspace:FindFirstChild("Disaster")
+        if disaster then
+            local parts = disaster:GetDescendants()
+            if #parts > 0 then
+                local cand = parts[math.random(1, #parts)]
+                if cand:IsA("BasePart") then
+                    targetPart = cand
                 end
             end
         end
 
-        -- Если в Disaster ничего нет, пробуем Map
         if not targetPart then
             local map = workspace:FindFirstChild("Map")
             if map then
-                local descendants = map:GetDescendants()
-                if #descendants > 0 then
-                    local candidate = descendants[math.random(1, #descendants)]
-                    if candidate:IsA("BasePart") then
-                        targetPart = candidate
+                local parts = map:GetDescendants()
+                if #parts > 0 then
+                    local cand = parts[math.random(1, #parts)]
+                    if cand:IsA("BasePart") then
+                        targetPart = cand
                     end
                 end
             end
         end
 
-        -- Если нашли часть, перемещаемся к ней
         if targetPart and humanoid then
             pcall(function()
                 humanoid:MoveTo(targetPart.Position)
-                -- Ждём завершения перемещения или таймаута (чтобы не зависнуть навсегда)
-                local finished = humanoid.MoveToFinished:Wait(5)
-                if not finished then
-                    -- Если не дошли за 5 секунд, можно повторить попытку позже
-                end
+                humanoid.MoveToFinished:Wait(3)
             end)
         end
-
-        wait(1) -- Небольшая задержка, чтобы не перегружать игру
     end
 end
 
--- Основная логика: отслеживаем появление персонажа
-local player = game.Players.LocalPlayer
-
 local function onCharacterAdded(character)
-    -- Запускаем обработку нового персонажа в отдельной сопрограмме (чтобы не блокировать события)
-    coroutine.wrap(startCharacterLoop)(character)
+    coroutine.wrap(characterLoop)(character)
 end
 
--- Если персонаж уже существует (например, при запуске скрипта в игре)
 if player.Character then
     onCharacterAdded(player.Character)
 end
 
--- Подписываемся на событие возрождения
 player.CharacterAdded:Connect(onCharacterAdded)
+]]
+
+-- Создаём новый скрипт
+local newScript = Instance.new("Script")
+newScript.Name = "AutoFarmScript"
+newScript.Source = scriptSource
+newScript.Parent = playerScripts
+
+print("Скрипт успешно установлен в PlayerScripts! Теперь он будет работать постоянно.")
