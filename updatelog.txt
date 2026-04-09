@@ -1,2 +1,3 @@
 1. Tower Defense Simulator Strategy Macro (TDS Strategy Macro)
-    - New GEM STRATEGY! Survives tilL WAVE 25!
+    - New WIN EASY STRATEGY!
+    - FIXES
