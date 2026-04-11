@@ -1,3 +1,10 @@
-1. Tower Defense Simulator Strategy Macro (TDS Strategy Macro)
-    - New WIN EASY STRATEGY!
-    - FIXES
+1. Ultimate Macro
+    - fixes
+    - added auto download update
+
+2. Tower Defense Simulator Strategy Macro
+    - Added new strategy: Win  - Frost - Summer Castles
+    - minor changes to gui
+    - added support for Abilities (Support Caravan, Drop The Beat, Call of Arms)
+    - added support for DJ and his tracks
+    - better strats
