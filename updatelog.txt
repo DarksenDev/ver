@@ -1,8 +1,8 @@
 1. Ultimate Macro
-    - Massive Update
+    - rewrited updater
 
 2. Tower Defense Simulator Strategy Macro
     - Coin Farm: Discontinued due to bad results
-    - Gem Farm: mini upd
-    - New Strategy Tool!
-P.S. : MATVEY DRISTUN
+    - Strategy Recorder Update
+
+P.S. MATVEY DRISTUN
