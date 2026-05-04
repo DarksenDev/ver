@@ -1,2 +1,2 @@
 1. Tower Defense Simulator Strategy Macro
-    - fixed issue when adskkasdlkasjdlajd end of the game was doesn't detected
+    - fixed issue when adskkasdlkasjdlajd end of the game wasn't detected
