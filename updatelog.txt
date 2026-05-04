@@ -1,2 +1,2 @@
 1. Tower Defense Simulator Strategy Macro
-    - Updated Strategy Tool
+    - fixed Strategy Tool
