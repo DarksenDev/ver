@@ -1,2 +1,4 @@
 1. Tower Defense Simulator Strategy Macro
-    - fixed issue when adskkasdlkasjdlajd end of the game wasn't detected
+    - Massive Update
+        - Added Debug Console
+        - Deleted Strategy Tool and 2 scripts combined into one
