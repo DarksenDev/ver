@@ -65,7 +65,7 @@ game:GetService("GuiService").ErrorMessageChanged:Connect(function()
     game:GetService("TeleportService"):Teleport(game.PlaceId, player)
 end)
 
--- PATHFINDING MOVEMENT
+-- УМНЫЙ PATHFINDING С АВТО-ПРЫЖКАМИ И ОБХОДОМ СТЕН (Win, Tycoon, WinBUTTON)
 local function walkPath(targetPos)
     local char = player.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -95,7 +95,7 @@ local function walkPath(targetPos)
     end
 end
 
--- ОБЫЧНЫЙ ПРЯМОЙ ХОД
+-- ОБЫЧНЫЙ ПРЯМОЙ ХОД (Для лобби)
 local function walkDirect(targetPos)
     local char = player.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -183,7 +183,7 @@ task.spawn(function()
             -- ДЕТЕКЦИЯ КАТАСТРОФ И КНОПОК
             local water = disaster and (disaster:FindFirstChild("Water", true) or disaster:FindFirstChild("Flood", true) or disaster:FindFirstChild("Liquid", true))
             local disaster24 = disaster and disaster:FindFirstChild("Disaster24") 
-            local disaster3 = disaster and disaster:FindFirstChild("Disaster3") -- Проверка на катастрофу 3
+            local disaster3 = disaster and disaster:FindFirstChild("Disaster3")
             
             local win = disaster and disaster:FindFirstChild("Win", true)
             local tableBtn = disaster and disaster:FindFirstChild("TableNButtonClickDetector", true)
@@ -325,21 +325,20 @@ task.spawn(function()
                 walkDirect(tableBtn.Parent.Position)
                 if (root.Position - tableBtn.Parent.Position).Magnitude < 10 then fireclickdetector(tableBtn) end
 
-            -- ПРОВЕРКА НА ПОБЕДУ ЧЕРЕЗ WIN
+            -- ЛОГИКА WIN ЧЕРЕЗ PATHFINDING ДЛЯ ВСЕХ ОСТАЛЬНЫХ КАТАСТРОФ
             elseif win then
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
                 targetOverride = nil; isHoldingRocket = false
                 
-                -- НОВАЯ ЛОГИКА: ТЕЛЕПОРТ НА WIN ПРИ DISASTER3
                 if disaster3 then
-                    Status.Text = "⚡ DISASTER 3: TELEPORTING TO WIN"
-                    GlowLine.BackgroundColor3 = Color3.fromRGB(255, 255, 255) -- Белый цвет при чит-телепорте
+                    Status.Text = "⚡ DISASTER 3: TELEPORT TO WIN"
+                    GlowLine.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
                     PulseDot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-                    root.CFrame = CFrame.new(win.Position + Vector3.new(0, 2, 0)) -- Моментальный ТП
+                    root.CFrame = CFrame.new(win.Position + Vector3.new(0, 2, 0))
                     task.wait(0.2)
                 else
-                    -- Обычный умный поход пешком в остальных случаях
-                    Status.Text = "MOVING TO WIN PART"
+                    -- ТЕПЕРЬ СТРОГО УМНЫЙ PATHFINDING С АВТО-ПРЫЖКАМИ ДО WIN PART
+                    Status.Text = "PATHFINDING TO WIN PART"
                     GlowLine.BackgroundColor3 = Color3.fromRGB(180, 50, 255)
                     PulseDot.BackgroundColor3 = Color3.fromRGB(180, 50, 255)
                     walkPath(win.Position)
