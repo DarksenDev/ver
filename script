@@ -1,32 +1,60 @@
--- CLEANUP
+-- CLEANUP PREVIOUS SESSIONS
 for _, old in pairs(game.CoreGui:GetChildren()) do
-    if old.Name == "SurvivorHub" then old:Destroy() end
+    if old.Name == "PremiumSurvivorAI" then old:Destroy() end
 end
 
 _G.BotRunning = true
 local player = game.Players.LocalPlayer
 local Pathfinding = game:GetService("PathfindingService")
-
-local lastWander = 0
 local wanderTarget = nil
 
--- GUI
-local sg = Instance.new("ScreenGui", game.CoreGui)
-sg.Name = "SurvivorHub"
-local frame = Instance.new("Frame", sg)
-frame.Size = UDim2.new(0, 220, 0, 90)
-frame.Position = UDim2.new(0.5, -110, 0.05, 0)
-frame.BackgroundColor3 = Color3.fromRGB(15, 20, 30)
-Instance.new("UICorner", frame)
+-- PREMIUM COMPACT GUI
+local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
+ScreenGui.Name = "PremiumSurvivorAI"
 
-local status = Instance.new("TextLabel", frame)
-status.Size = UDim2.new(1, 0, 1, 0)
-status.TextColor3 = Color3.new(1, 1, 1)
-status.BackgroundTransparency = 1
-status.Text = "SMART AI RUNNING"
-status.Font = Enum.Font.GothamBold
+local Main = Instance.new("Frame", ScreenGui)
+Main.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+Main.BorderSizePixel = 0
+Main.Size = UDim2.new(0, 260, 0, 100)
+Main.Position = UDim2.new(0.5, -130, 0.05, 0) -- Сверху по центру, не мешает джойстику
+Main.Active = true
+Main.Draggable = true
 
--- 1. АНТИ-АФК И РЕДЖОИН
+local MainCorner = Instance.new("UICorner", Main)
+MainCorner.CornerRadius = UDim.new(0, 12)
+
+-- Неоновая верхняя линия (Индикатор работы)
+local GlowLine = Instance.new("Frame", Main)
+GlowLine.Size = UDim2.new(1, 0, 0, 3)
+GlowLine.BorderSizePixel = 0
+GlowLine.BackgroundColor3 = Color3.fromRGB(0, 180, 255)
+Instance.new("UICorner", GlowLine).CornerRadius = UDim.new(0, 3)
+
+local InnerFrame = Instance.new("Frame", Main)
+InnerFrame.Size = UDim2.new(1, -20, 1, -25)
+InnerFrame.Position = UDim2.new(0, 10, 0, 15)
+InnerFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
+InnerFrame.BorderSizePixel = 0
+Instance.new("UICorner", InnerFrame).CornerRadius = UDim.new(0, 8)
+
+-- Мигающий индикатор статуса
+local PulseDot = Instance.new("Frame", InnerFrame)
+PulseDot.Size = UDim2.new(0, 8, 0, 8)
+PulseDot.Position = UDim2.new(0, 15, 0, 26)
+PulseDot.BackgroundColor3 = Color3.fromRGB(0, 255, 140)
+Instance.new("UICorner", PulseDot).CornerRadius = UDim.new(1, 0)
+
+local Status = Instance.new("TextLabel", InnerFrame)
+Status.Size = UDim2.new(1, -40, 1, 0)
+Status.Position = UDim2.new(0, 32, 0, 0)
+Status.BackgroundTransparency = 1
+Status.Text = "INITIALIZING AGENT..."
+Status.TextColor3 = Color3.fromRGB(245, 245, 245)
+Status.TextSize = 13
+Status.Font = Enum.Font.GothamBold
+Status.TextXAlignment = Enum.TextXAlignment.Left
+
+-- АНТИ-АФК И РЕДЖОИН
 player.Idled:Connect(function()
     game:GetService("VirtualUser"):CaptureController()
     game:GetService("VirtualUser"):ClickButton2(Vector2.new(0,0))
@@ -37,43 +65,32 @@ game:GetService("GuiService").ErrorMessageChanged:Connect(function()
     game:GetService("TeleportService"):Teleport(game.PlaceId, player)
 end)
 
--- УМНАЯ ХОДЬБА ЧЕРЕЗ PATHFINDING (Для Win и важных целей)
+-- ХОДЬБА PATHFINDING
 local function walkPath(targetPos)
     local char = player.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not hum or not root then return end
 
-    local path = Pathfinding:CreatePath({
-        AgentRadius = 2.5,
-        AgentCanJump = true,
-        WaypointSpacing = 4
-    })
-    
+    local path = Pathfinding:CreatePath({AgentRadius = 2.5, AgentCanJump = true, WaypointSpacing = 4})
     local success, _ = pcall(function() path:ComputeAsync(root.Position, targetPos) end)
     
     if success and path.Status == Enum.PathStatus.Success then
         local wps = path:GetWaypoints()
-        -- Берем первые несколько точек, чтобы бот двигался плавно и без лагов
         for i = 1, math.min(#wps, 4) do
             if not _G.BotRunning or hum.Health <= 0 then break end
             hum:MoveTo(wps[i].Position)
             if wps[i].Action == Enum.PathWaypointAction.Jump then hum.Jump = true end
-            
-            local arrived = hum.MoveToFinished:Wait(0.3)
-            if not arrived and root.AssemblyLinearVelocity.Magnitude < 3 then 
-                hum.Jump = true 
-                break 
-            end
+            local arrived = hum.MoveToFinished:Wait(0.2)
+            if not arrived and root.AssemblyLinearVelocity.Magnitude < 3 then hum.Jump = true break end
         end
     else
-        -- Напролом, если путь заблокирован намертво
         hum:MoveTo(targetPos)
         if root.AssemblyLinearVelocity.Magnitude < 3 then hum.Jump = true end
     end
 end
 
--- ОБЫЧНЫЙ СТАРЫЙ ХОД (Для кнопок)
+-- ОБЫЧНЫЙ ХОД
 local function walkDirect(targetPos)
     local char = player.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -84,47 +101,41 @@ local function walkDirect(targetPos)
     if root.AssemblyLinearVelocity.Magnitude < 3 then hum.Jump = true end
 end
 
--- ФУНКЦИЯ ДЛЯ УМНОГО WANDERING (Сканирование стен лучами)
+-- СКАНЕР СТЕН И ОБРЫВОВ
 local function getSafeWanderPos(root)
     local directions = {
-        Vector3.new(1, 0, 0),   -- Право
-        Vector3.new(-1, 0, 0),  -- Лево
-        Vector3.new(0, 0, 1),   -- Назад
-        Vector3.new(0, 0, -1),  -- Вперед
-        Vector3.new(1, 0, 1).Unit,
-        Vector3.new(-1, 0, -1).Unit
+        Vector3.new(1, 0, 0), Vector3.new(-1, 0, 0),
+        Vector3.new(0, 0, 1), Vector3.new(0, 0, -1),
+        Vector3.new(1, 0, 1).Unit, Vector3.new(-1, 0, -1).Unit
     }
     
-    -- Перемешиваем направления, чтобы ходить случайно
     for i = #directions, 2, -1 do
         local j = math.random(i)
         directions[i], directions[j] = directions[j], directions[i]
     end
 
-    -- Проверяем лучами, куда идти безопасно
-    for _, dir in ipairs(directions) do
-        local raycastParams = RaycastParams.new()
-        raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-        raycastParams.FilterDescendantsInstances = {player.Character}
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+    raycastParams.FilterDescendantsInstances = {player.Character}
 
-        -- Стреляем лучом на 25 блоков вперед в этом направлении
-        local rayResult = workspace:Raycast(root.Position, dir * 25, raycastParams)
-        
-        -- Если луч ни обо что не ударился — это направление свободное и безопасное!
-        if not rayResult then
-            return root.Position + (dir * math.random(15, 25))
+    for _, dir in ipairs(directions) do
+        local wallCheck = workspace:Raycast(root.Position, dir * 25, raycastParams)
+        if not wallCheck then
+            local checkPos = root.Position + (dir * 18)
+            local floorCheck = workspace:Raycast(checkPos + Vector3.new(0, 2, 0), Vector3.new(0, -15, 0), raycastParams)
+            
+            if floorCheck and floorCheck.Instance and floorCheck.Instance.CanCollide then
+                return checkPos
+            end
         end
     end
-    
-    -- Если везде стены, просто выдаем случайную точку как запасной вариант
-    return root.Position + Vector3.new(math.random(-20, 20), 0, math.random(-20, 20))
+    return root.Position - (root.CFrame.LookVector * 12) -- Откат назад если тупик
 end
 
-
--- ГЛАВНЫЙ ИСПОЛНИТЕЛЬНЫЙ ЦИКЛ
+-- ГЛАВНЫЙ ЦИКЛ
 task.spawn(function()
     while _G.BotRunning do
-        task.wait(0.15)
+        task.wait(0.1)
         pcall(function()
             local char = player.Character
             local root = char:FindFirstChild("HumanoidRootPart")
@@ -141,19 +152,21 @@ task.spawn(function()
             local weapon = char:FindFirstChild("ClassicSword") or player.Backpack:FindFirstChild("ClassicSword") or 
                            char:FindFirstChild("RocketLauncher") or player.Backpack:FindFirstChild("RocketLauncher")
 
-            -- ЛОГИКА ПРИОРИТЕТОВ
+            -- ИЕРАРХИЯ СМЕНЫ СТАТУСОВ И СВЕЧЕНИЯ GUI
             if water then
-                status.Text = "⚡ TP: WATER EVASION"
+                Status.Text = "EVADING WATER (TELEPORT)"
+                GlowLine.BackgroundColor3 = Color3.fromRGB(255, 50, 50) -- Красный при опасности
+                PulseDot.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
                 local high = root.Position
                 for _, p in pairs(disaster:GetDescendants()) do
-                    if p:IsA("BasePart") and p.CanCollide and p.Position.Y > high.Y and p.Name ~= "Water" then 
-                        high = p.Position 
-                    end
+                    if p:IsA("BasePart") and p.CanCollide and p.Position.Y > high.Y and p.Name ~= "Water" then high = p.Position end
                 end
                 root.CFrame = CFrame.new(high + Vector3.new(0, 5, 0))
 
             elseif weapon then
-                status.Text = "🚀 HUNTING PLAYERS"
+                Status.Text = "HUNTING ENEMIES WITH " .. weapon.Name:upper()
+                GlowLine.BackgroundColor3 = Color3.fromRGB(255, 120, 0) -- Оранжевый во время охоты
+                PulseDot.BackgroundColor3 = Color3.fromRGB(255, 120, 0)
                 if weapon.Parent == player.Backpack then hum:EquipTool(weapon) end
                 local target = nil
                 local dist = 1000
@@ -170,30 +183,34 @@ task.spawn(function()
                 end
 
             elseif tableBtn then
-                status.Text = "🔘 CLICKING TABLE"
+                Status.Text = "SPAMMING GAME TABLE"
+                GlowLine.BackgroundColor3 = Color3.fromRGB(255, 200, 0) -- Желтый при кликах
+                PulseDot.BackgroundColor3 = Color3.fromRGB(255, 200, 0)
                 walkDirect(tableBtn.Parent.Position)
-                if (root.Position - tableBtn.Parent.Position).Magnitude < 10 then 
-                    fireclickdetector(tableBtn) 
-                end
+                if (root.Position - tableBtn.Parent.Position).Magnitude < 10 then fireclickdetector(tableBtn) end
 
             elseif win then
-                status.Text = "🏆 PATHFINDING TO WIN"
-                -- ЗДЕСЬ СТРОГО УМНЫЙ PATHFINDING
+                Status.Text = "PATHFINDING TO VICTORY"
+                GlowLine.BackgroundColor3 = Color3.fromRGB(180, 50, 255) -- Фиолетовый при победе
+                PulseDot.BackgroundColor3 = Color3.fromRGB(180, 50, 255)
                 walkPath(win.Position)
 
             elseif CLICKButton then
-                status.Text = "🎮 GOING TO START"
+                Status.Text = "MOVING TO START BUTTON"
+                GlowLine.BackgroundColor3 = Color3.fromRGB(0, 150, 255) -- Синий по пути к кнопке
+                PulseDot.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
                 local pos = CLICKButton:IsA("BasePart") and CLICKButton.Position or CLICKButton.Parent.Position
                 walkDirect(pos)
                 if (root.Position - pos).Magnitude < 10 then
                     fireclickdetector(CLICKButton:FindFirstChildOfClass("ClickDetector") or CLICKButton)
                 end
             else
-                -- УМНЫЙ IDLE БЕЗ СТЕН
-                status.Text = "🚶 SMART WANDERING..."
-                if tick() - lastWander > 3 or not wanderTarget then
-                    lastWander = tick()
-                    wanderTarget = getSafeWanderPos(root) -- Получаем безопасную точку лучами
+                Status.Text = "SMART ROAMING (SAFE IDLE)"
+                GlowLine.BackgroundColor3 = Color3.fromRGB(0, 255, 140) -- Зеленый в покое
+                PulseDot.BackgroundColor3 = Color3.fromRGB(0, 255, 140)
+                
+                if not wanderTarget or (root.Position - wanderTarget).Magnitude < 5 then
+                    wanderTarget = getSafeWanderPos(root)
                 end
                 walkDirect(wanderTarget)
             end
