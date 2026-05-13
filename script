@@ -1,6 +1,6 @@
--- CLEANUP PREVIOUS SESSIONS
+-- ПОЛНАЯ ОЧИСТКА ПРЕДЫДУЩИХ СЕССИЙ (Anti-Duplicate)
 for _, old in pairs(game.CoreGui:GetChildren()) do
-    if old.Name == "PremiumSurvivorAI" then old:Destroy() end
+    if old.Name == "PremiumSurvivorAI" or old.Name == "SurvivorHub" then old:Destroy() end
 end
 if workspace:FindFirstChild("Disaster24_SafePlatform") then
     workspace.Disaster24_SafePlatform:Destroy()
@@ -8,16 +8,15 @@ end
 
 _G.BotRunning = true
 local player = game.Players.LocalPlayer
-local Pathfinding = game:GetService("PathfindingService")
 local wanderTarget = nil
 local safePlatform = nil
 local lastCharacter = nil
 
--- Переменные для детектора застревания (Исправлено)
-local stuckTime = 0
-local lastTargetPos = nil
+-- Сверхчувствительный трекер застревания
+local lastCheckPos = Vector3.new(0,0,0)
+local timeStuck = 0
 
--- PREMIUM COMPACT GUI
+-- MODERN COMPACT GUI (Смена цветов под задачи)
 local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
 ScreenGui.Name = "PremiumSurvivorAI"
 
@@ -33,7 +32,7 @@ Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 12)
 local GlowLine = Instance.new("Frame", Main)
 GlowLine.Size = UDim2.new(1, 0, 0, 3)
 GlowLine.BorderSizePixel = 0
-GlowLine.BackgroundColor3 = Color3.fromRGB(0, 180, 255)
+GlowLine.BackgroundColor3 = Color3.fromRGB(0, 255, 140)
 Instance.new("UICorner", GlowLine).CornerRadius = UDim.new(0, 3)
 
 local InnerFrame = Instance.new("Frame", Main)
@@ -52,87 +51,47 @@ local Status = Instance.new("TextLabel", InnerFrame)
 Status.Size = UDim2.new(1, -40, 1, 0)
 Status.Position = UDim2.new(0, 32, 0, 0)
 Status.BackgroundTransparency = 1
-Status.Text = "INITIALIZING AGENT..."
+Status.Text = "SYSTEM INITIALIZING..."
 Status.TextColor3 = Color3.fromRGB(245, 245, 245)
 Status.TextSize = 13
 Status.Font = Enum.Font.GothamBold
 Status.TextXAlignment = Enum.TextXAlignment.Left
 
--- ANTI-AFK & REJOIN
+-- ANTI-AFK Bypass
 player.Idled:Connect(function()
     game:GetService("VirtualUser"):CaptureController()
     game:GetService("VirtualUser"):ClickButton2(Vector2.new(0,0))
 end)
 
+-- Auto-Reconnect Change Tracker
 game:GetService("GuiService").ErrorMessageChanged:Connect(function()
     task.wait(5)
     game:GetService("TeleportService"):Teleport(game.PlaceId, player)
 end)
 
--- НАВИГАЦИЯ С ИСПРАВЛЕННЫМ ТАЙМЕРОМ ЗАСТРЕВАНИЯ
-local function smartMove(targetPos, isRoaming)
+-- БЕЗОПАСНАЯ И ПЛАВНАЯ ФУНКЦИЯ ХОДЬБЫ (С защитой от застревания)
+local function walk(targetPos)
     local char = player.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not hum or not root then return end
 
-    -- Если цель сменилась, сбрасываем счетчик застревания
-    if lastTargetPos ~= targetPos then
-        lastTargetPos = targetPos
-        stuckTime = 0
-    end
-
     hum:MoveTo(targetPos)
 
-    if not isRoaming then
-        -- Проверяем скорость: если она критически низкая (меньше 0.5 блоков в сек)
-        if root.AssemblyLinearVelocity.Magnitude < 0.5 then
-            stuckTime = stuckTime + 0.1
-            if stuckTime > 2.5 then -- Увеличено до 2.5 секунд, чтобы избежать ложных срабатываний
-                Status.Text = "⚡ STUCK! TELEPORTING TO TARGET"
-                root.CFrame = CFrame.new(targetPos + Vector3.new(0, 2, 0))
-                stuckTime = 0
-                task.wait(0.5) -- Даем персонажу время зафиксироваться на кнопке
-            end
-        else
-            -- Плавно уменьшаем stuckTime, если мы движемся, а не сбрасываем мгновенно
-            stuckTime = math.max(0, stuckTime - 0.2)
+    -- Жёсткий замер физической скорости тела
+    if root.AssemblyLinearVelocity.Magnitude < 2.5 then
+        timeStuck = timeStuck + 0.1
+        if timeStuck > 0.4 then -- Если затупил на 0.4 секунды — прыгаем и сбрасываем цель
+            hum.Jump = true
+            wanderTarget = nil -- Смена пути для Idle раунда
+            timeStuck = 0
         end
+    else
+        timeStuck = 0
     end
 end
 
--- ЛОКАЛЬНЫЙ ROAMING ОТ СЕБЯ
-local function getSmartWanderPos(root)
-    local directions = {
-        Vector3.new(1, 0, 0), Vector3.new(-1, 0, 0),
-        Vector3.new(0, 0, 1), Vector3.new(0, 0, -1),
-        Vector3.new(1, 0, 1).Unit, Vector3.new(-1, 0, -1).Unit
-    }
-    for i = #directions, 2, -1 do
-        local j = math.random(i)
-        directions[i], directions[j] = directions[j], directions[i]
-    end
-    
-    local raycastParams = RaycastParams.new()
-    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-    raycastParams.FilterDescendantsInstances = {player.Character}
-
-    for _, dir in ipairs(directions) do
-        local wallCheck = workspace:Raycast(root.Position, dir * 14, raycastParams)
-        if not wallCheck then
-            local stepDistance = math.random(7, 13)
-            local checkPos = root.Position + (dir * stepDistance)
-            local floorCheck = workspace:Raycast(checkPos + Vector3.new(0, 2, 0), Vector3.new(0, -10, 0), raycastParams)
-            
-            if floorCheck and floorCheck.Instance and floorCheck.Instance.CanCollide then
-                return checkPos
-            end
-        end
-    end
-    return root.Position - (root.CFrame.LookVector * 6)
-end
-
--- TYCOON SCANNER
+-- ТАЙКУН СКАНЕР (Оптимизированный поиск цен)
 local function getCheapestTycoonButton(disasterFolder)
     local cheapestBtn = nil
     local lowestPrice = math.huge
@@ -147,7 +106,6 @@ local function getCheapestTycoonButton(disasterFolder)
                 if priceLabel and (priceLabel:IsA("TextLabel") or priceLabel:IsA("TextBox")) then
                     local priceText = priceLabel.Text:gsub("%D", "")
                     local priceNum = tonumber(priceText)
-                    
                     if priceNum and priceNum < lowestPrice then
                         lowestPrice = priceNum
                         cheapestBtn = obj:FindFirstChild("Detect")
@@ -159,14 +117,12 @@ local function getCheapestTycoonButton(disasterFolder)
     return cheapestBtn, lowestPrice
 end
 
--- VIRTUAL MOUSE INTERCEPT
+-- ПЕРЕХВАТ МЫШКИ (Для Ракетницы)
 local mouse = player:GetMouse()
 local targetOverride = nil
-
 local mt = getrawmetatable(game)
 local oldIndex = mt.__index
 setreadonly(mt, false)
-
 mt.__index = newcclosure(function(self, key)
     if self == mouse and targetOverride and targetOverride.Parent then
         if key == "Hit" then return targetOverride.CFrame
@@ -176,7 +132,8 @@ mt.__index = newcclosure(function(self, key)
 end)
 setreadonly(mt, true)
 
--- MAIN AI LOOP
+
+-- ГЛАВНЫЙ ИСПОЛНИТЕЛЬНЫЙ ЦИКЛ
 task.spawn(function()
     while _G.BotRunning do
         task.wait(0.1)
@@ -186,18 +143,15 @@ task.spawn(function()
             local hum = char:FindFirstChildOfClass("Humanoid")
             local disaster = workspace:FindFirstChild("Disaster")
 
-            if not root or not hum or hum.Health <= 0 then 
-                targetOverride = nil 
-                return 
-            end
+            if not root or not hum or hum.Health <= 0 then targetOverride = nil return end
 
-            -- СБРОС ПРИ СМЕРТИ
+            -- Сброс путей при респавне
             if player.Character ~= lastCharacter then
                 lastCharacter = player.Character
                 wanderTarget = nil 
             end
 
-            -- OBJECT DETECTION
+            -- ОПРЕДЕЛЕНИЕ ОБЪЕКТОВ
             local water = disaster and disaster:FindFirstChild("Water", true)
             local disaster24 = disaster and disaster:FindFirstChild("Disaster24", true)
             local win = disaster and disaster:FindFirstChild("Win", true)
@@ -209,13 +163,11 @@ task.spawn(function()
             local tycoonBtn, tycoonPrice = nil, nil
             local winButton = disaster and disaster:FindFirstChild("WinBUTTON", true)
 
-            if disaster then
-                tycoonBtn, tycoonPrice = getCheapestTycoonButton(disaster)
-            end
+            if disaster then tycoonBtn, tycoonPrice = getCheapestTycoonButton(disaster) end
 
-            -- LOGIC HIERARCHY
+            -- ИЕРАРХИЯ ЗАДАЧ И СМЕНА СВЕЧЕНИЯ
             if disaster24 then
-                Status.Text = "🛡️ DISASTER 24: TELEPORT SAFE"
+                Status.Text = "🛡️ DISASTER 24: BLOCK SAFE"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(255, 0, 100)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(255, 0, 100)
                 targetOverride = nil
@@ -233,12 +185,7 @@ task.spawn(function()
                     safePlatform.Color = Color3.fromRGB(0, 255, 255)
                     safePlatform.Parent = workspace
                 end
-
-                if (root.Position - targetPlatformPos).Magnitude > 4 then
-                    root.CFrame = CFrame.new(targetPlatformPos)
-                else
-                    hum:MoveTo(root.Position)
-                end
+                if (root.Position - targetPlatformPos).Magnitude > 4 then root.CFrame = CFrame.new(targetPlatformPos) else hum:MoveTo(root.Position) end
 
             elseif water then
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
@@ -268,17 +215,11 @@ task.spawn(function()
                 end
                 if target then
                     targetOverride = target
-                    if weapon.Name == "RocketLauncher" then
-                        if dist > 15 then smartMove(target.Position, false) else hum:MoveTo(root.Position) end
-                    else
-                        smartMove(target.Position, false)
-                    end
+                    walk(target.Position)
                     root.CFrame = CFrame.new(root.Position, Vector3.new(target.Position.X, root.Position.Y, target.Position.Z))
                     workspace.CurrentCamera.CFrame = CFrame.new(workspace.CurrentCamera.CFrame.Position, target.Position)
                     weapon:Activate()
-                else
-                    targetOverride = nil
-                end
+                else targetOverride = nil end
 
             elseif tycoonBtn then
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
@@ -291,9 +232,9 @@ task.spawn(function()
                 if distanceToBtn <= 4 then
                     hum.Jump = true
                     local drift = (tick() % 1 > 0.5) and 1 or -1
-                    smartMove(tycoonBtn.Position + Vector3.new(drift, 0, 0), false)
+                    walk(tycoonBtn.Position + Vector3.new(drift, 0, 0))
                 else
-                    smartMove(tycoonBtn.Position, false)
+                    walk(tycoonBtn.Position)
                 end
 
             elseif winButton then
@@ -305,13 +246,12 @@ task.spawn(function()
                 
                 local targetNode = winButton:FindFirstChild("Detect") or winButton:FindFirstChildWhichIsA("BasePart", true) or winButton
                 local distanceToWinBtn = (root.Position - targetNode.Position).Magnitude
-                
                 if distanceToWinBtn <= 4 then
                     hum.Jump = true
                     local drift = (tick() % 1 > 0.5) and 1 or -1
-                    smartMove(targetNode.Position + Vector3.new(drift, 0, 0), false)
+                    walk(targetNode.Position + Vector3.new(drift, 0, 0))
                 else
-                    smartMove(targetNode.Position, false)
+                    walk(targetNode.Position)
                 end
 
             elseif tableBtn then
@@ -320,7 +260,7 @@ task.spawn(function()
                 Status.Text = "SPAMMING GAME TABLE"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(255, 200, 0)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(255, 200, 0)
-                smartMove(tableBtn.Parent.Position, false)
+                walk(tableBtn.Parent.Position)
                 if (root.Position - tableBtn.Parent.Position).Magnitude < 10 then fireclickdetector(tableBtn) end
 
             elseif win then
@@ -329,7 +269,7 @@ task.spawn(function()
                 Status.Text = "MOVING TO WIN PART"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(180, 50, 255)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(180, 50, 255)
-                smartMove(win.Position, false)
+                walk(win.Position)
 
             elseif CLICKButton then
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
@@ -338,21 +278,23 @@ task.spawn(function()
                 GlowLine.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
                 local pos = CLICKButton:IsA("BasePart") and CLICKButton.Position or CLICKButton.Parent.Position
-                smartMove(pos, false)
+                walk(pos)
                 if (root.Position - pos).Magnitude < 10 then
                     fireclickdetector(CLICKButton:FindFirstChildOfClass("ClickDetector") or CLICKButton)
+                    wanderTarget = nil
                 end
             else
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
                 targetOverride = nil
-                Status.Text = "SMART ROAMING (ANTI-VOID)"
+                Status.Text = "SMART ROAMING (ACTIVE MODE)"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(0, 255, 140)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(0, 255, 140)
                 
+                -- РАСЧЕТ СЛЕДУЮЩЕГО ШАГА СТРОГО ОТ СЕБЯ (Без затупов)
                 if not wanderTarget or (root.Position - wanderTarget).Magnitude < 4 then
-                    wanderTarget = getSmartWanderPos(root)
+                    wanderTarget = root.Position + Vector3.new(math.random(-15, 15), 0, math.random(-15, 15))
                 end
-                smartMove(wanderTarget, true)
+                walk(wanderTarget)
             end
         end)
     end
