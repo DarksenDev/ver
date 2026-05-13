@@ -14,7 +14,6 @@ local safePlatform = nil
 local lastCharacter = nil
 
 -- Переменные для детектора застревания
-local lastPosition = Vector3.new(0,0,0)
 local stuckTime = 0
 
 -- PREMIUM COMPACT GUI
@@ -69,52 +68,73 @@ game:GetService("GuiService").ErrorMessageChanged:Connect(function()
     game:GetService("TeleportService"):Teleport(game.PlaceId, player)
 end)
 
--- НАВИГАЦИЯ С ПРОВЕРКОЙ НА ЗАКЛИНИВАНИЕ ЧЕРЕЗ TP
+-- НАВИГАЦИЯ С АВТО-ТЕЛЕПОРТОМ ПРИ ЗАСТРЕВАНИИ ДЛЯ ВАЖНЫХ ЦЕЛЕЙ
 local function smartMove(targetPos, isRoaming)
     local char = player.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not hum or not root then return end
 
-    -- Пытаемся идти обычным методом
     hum:MoveTo(targetPos)
 
-    -- Если это не случайная прогулка (Wandering), то проверяем застревание
-    if not isRoaming then
-        -- Если персонаж почти не двигается (скорость меньше 2 блоков в секунду)
-        if root.AssemblyLinearVelocity.Magnitude < 2 then
-            stuckTime = stuckTime + 0.1
-            if stuckTime > 1.5 then -- Если стоим на месте дольше 1.5 секунд
-                Status.Text = "⚡ STUCK DETECTED! TELEPORTING..."
-                root.CFrame = CFrame.new(targetPos + Vector3.new(0, 2, 0)) -- Экстренно телепортируем к цели
+    -- Если персонаж почти не двигается (уперся в препятствие)
+    if root.AssemblyLinearVelocity.Magnitude < 2 then
+        stuckTime = stuckTime + 0.1
+        if stuckTime > 1.5 then -- Если стоим дольше 1.5 секунд
+            if isRoaming then
+                -- ЕСЛИ ЗАСТРЯЛ В ROAMING: Сбрасываем цель, чтобы мгновенно сменить путь
+                wanderTarget = nil 
+                stuckTime = 0
+            else
+                -- ЕСЛИ ЗАСТРЯЛ НА ВАЖНОЙ ЦЕЛИ: Телепортируемся прямо к ней сквозь стену
+                Status.Text = "⚡ OBSTACLE DETECTED! TELEPORTING..."
+                root.CFrame = CFrame.new(targetPos + Vector3.new(0, 2, 0))
                 stuckTime = 0
                 task.wait(0.2)
             end
-        else
-            stuckTime = 0 -- Сбрасываем таймер, если успешно движемся
         end
+    else
+        stuckTime = 0
     end
 end
 
--- ЛОКАЛЬНЫЙ ROAMING ОТ СЕБЯ
-local function getLocalWanderPos(root)
-    local randomOffsetX = math.random(-14, 14)
-    local randomOffsetZ = math.random(-14, 14)
-    
-    if math.abs(randomOffsetX) < 6 then randomOffsetX = randomOffsetX > 0 and 6 or -6 end
-    if math.abs(randomOffsetZ) < 6 then randomOffsetZ = randomOffsetZ > 0 and 6 or -6 end
-    
-    local targetPos = root.Position + Vector3.new(randomOffsetX, 0, randomOffsetZ)
+-- УМНЫЙ РАСЧЕТ ROAMING: РАССТОЯНИЕ ОТ СЕБЯ + РЕЙКАСТ СТЕН + ЗАЩИТА ОТ ПРОПАСТИ
+local function getSmartWanderPos(root)
+    local directions = {
+        Vector3.new(1, 0, 0), Vector3.new(-1, 0, 0),
+        Vector3.new(0, 0, 1), Vector3.new(0, 0, -1),
+        Vector3.new(1, 0, 1).Unit, Vector3.new(-1, 0, -1).Unit
+    }
+    -- Перемешиваем направления ходьбы
+    for i = #directions, 2, -1 do
+        local j = math.random(i)
+        directions[i], directions[j] = directions[j], directions[i]
+    end
     
     local raycastParams = RaycastParams.new()
     raycastParams.FilterType = Enum.RaycastFilterType.Exclude
     raycastParams.FilterDescendantsInstances = {player.Character}
-    
-    local floorCheck = workspace:Raycast(targetPos + Vector3.new(0, 2, 0), Vector3.new(0, -10, 0), raycastParams)
-    if floorCheck and floorCheck.Instance and floorCheck.Instance.CanCollide then
-        return targetPos
+
+    for _, dir in ipairs(directions) do
+        -- 1. Проверка стены перед собой (Не дальше 14 блоков, чтобы не уходить за карту)
+        local wallCheck = workspace:Raycast(root.Position, dir * 14, raycastParams)
+        
+        if not wallCheck then
+            -- Генерируем локальный шаг от себя строго в свободную сторону
+            local stepDistance = math.random(7, 13)
+            local checkPos = root.Position + (dir * stepDistance)
+            
+            -- 2. Проверка пропасти (Стреляем вниз из будущей точки)
+            local floorCheck = workspace:Raycast(checkPos + Vector3.new(0, 2, 0), Vector3.new(0, -10, 0), raycastParams)
+            
+            -- Если луч нашел пол и по нему можно ходить — одобряем точку
+            if floorCheck and floorCheck.Instance and floorCheck.Instance.CanCollide then
+                return checkPos
+            end
+        end
     end
-    return root.Position
+    -- Запасной безопасный шаг назад, если впереди тупик или обрыв
+    return root.Position - (root.CFrame.LookVector * 6)
 end
 
 -- TYCOON SCANNER
@@ -330,14 +350,15 @@ task.spawn(function()
             else
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
                 targetOverride = nil
-                Status.Text = "LOCAL ROAMING (SAFE IDLE)"
+                Status.Text = "SMART ROAMING (ANTI-VOID)"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(0, 255, 140)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(0, 255, 140)
                 
-                if not wanderTarget or (root.Position - wanderTarget).Magnitude < 3 then
-                    wanderTarget = getLocalWanderPos(root)
+                -- Если точки нет или подошли вплотную — берем новую безопасную точку лучами от себя
+                if not wanderTarget or (root.Position - wanderTarget).Magnitude < 4 then
+                    wanderTarget = getSmartWanderPos(root)
                 end
-                smartMove(wanderTarget, true) -- Передаем true, чтобы ТП не срабатывал при обычном гулянии
+                smartMove(wanderTarget, true) -- Передаем true (активация смены пути при застревании)
             end
         end)
     end
