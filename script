@@ -11,7 +11,11 @@ local player = game.Players.LocalPlayer
 local Pathfinding = game:GetService("PathfindingService")
 local wanderTarget = nil
 local safePlatform = nil
-local lastCharacter = nil -- Для отслеживания перерождения
+local lastCharacter = nil
+
+-- Переменные для детектора застревания
+local lastPosition = Vector3.new(0,0,0)
+local stuckTime = 0
 
 -- PREMIUM COMPACT GUI
 local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
@@ -65,71 +69,55 @@ game:GetService("GuiService").ErrorMessageChanged:Connect(function()
     game:GetService("TeleportService"):Teleport(game.PlaceId, player)
 end)
 
--- PATHFINDING MOVEMENT
-local function walkPath(targetPos)
+-- НАВИГАЦИЯ С ПРОВЕРКОЙ НА ЗАКЛИНИВАНИЕ ЧЕРЕЗ TP
+local function smartMove(targetPos, isRoaming)
     local char = player.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not hum or not root then return end
 
-    local path = Pathfinding:CreatePath({AgentRadius = 2.5, AgentCanJump = true, WaypointSpacing = 4})
-    local success, _ = pcall(function() path:ComputeAsync(root.Position, targetPos) end)
-    
-    if success and path.Status == Enum.PathStatus.Success then
-        local wps = path:GetWaypoints()
-        for i = 1, math.min(#wps, 4) do
-            if not _G.BotRunning or hum.Health <= 0 then break end
-            hum:MoveTo(wps[i].Position)
-            if wps[i].Action == Enum.PathWaypointAction.Jump then hum.Jump = true end
-            local arrived = hum.MoveToFinished:Wait(0.2)
-            if not arrived and root.AssemblyLinearVelocity.Magnitude < 3 then hum.Jump = true break end
-        end
-    else
-        hum:MoveTo(targetPos)
-        if root.AssemblyLinearVelocity.Magnitude < 3 then hum.Jump = true end
-    end
-end
-
-local function walkDirect(targetPos)
-    local char = player.Character
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    if not hum or not root then return end
-
+    -- Пытаемся идти обычным методом
     hum:MoveTo(targetPos)
-    if root.AssemblyLinearVelocity.Magnitude < 3 then hum.Jump = true end
+
+    -- Если это не случайная прогулка (Wandering), то проверяем застревание
+    if not isRoaming then
+        -- Если персонаж почти не двигается (скорость меньше 2 блоков в секунду)
+        if root.AssemblyLinearVelocity.Magnitude < 2 then
+            stuckTime = stuckTime + 0.1
+            if stuckTime > 1.5 then -- Если стоим на месте дольше 1.5 секунд
+                Status.Text = "⚡ STUCK DETECTED! TELEPORTING..."
+                root.CFrame = CFrame.new(targetPos + Vector3.new(0, 2, 0)) -- Экстренно телепортируем к цели
+                stuckTime = 0
+                task.wait(0.2)
+            end
+        else
+            stuckTime = 0 -- Сбрасываем таймер, если успешно движемся
+        end
+    end
 end
 
--- СТРОГИЙ СКАНЕР С ОГРАНИЧЕНИЕМ РАДИУСА
-local function getSafeWanderPos(root)
-    local directions = {
-        Vector3.new(1, 0, 0), Vector3.new(-1, 0, 0),
-        Vector3.new(0, 0, 1), Vector3.new(0, 0, -1),
-        Vector3.new(1, 0, 1).Unit, Vector3.new(-1, 0, -1).Unit
-    }
-    for i = #directions, 2, -1 do
-        local j = math.random(i)
-        directions[i], directions[j] = directions[j], directions[i]
-    end
+-- ЛОКАЛЬНЫЙ ROAMING ОТ СЕБЯ
+local function getLocalWanderPos(root)
+    local randomOffsetX = math.random(-14, 14)
+    local randomOffsetZ = math.random(-14, 14)
+    
+    if math.abs(randomOffsetX) < 6 then randomOffsetX = randomOffsetX > 0 and 6 or -6 end
+    if math.abs(randomOffsetZ) < 6 then randomOffsetZ = randomOffsetZ > 0 and 6 or -6 end
+    
+    local targetPos = root.Position + Vector3.new(randomOffsetX, 0, randomOffsetZ)
     
     local raycastParams = RaycastParams.new()
     raycastParams.FilterType = Enum.RaycastFilterType.Exclude
     raycastParams.FilterDescendantsInstances = {player.Character}
-
-    for _, dir in ipairs(directions) do
-        local wallCheck = workspace:Raycast(root.Position, dir * 15, raycastParams)
-        if not wallCheck then
-            local checkPos = root.Position + (dir * math.random(8, 14))
-            local floorCheck = workspace:Raycast(checkPos + Vector3.new(0, 2, 0), Vector3.new(0, -10, 0), raycastParams)
-            if floorCheck and floorCheck.Instance and floorCheck.Instance.CanCollide then
-                return checkPos
-            end
-        end
+    
+    local floorCheck = workspace:Raycast(targetPos + Vector3.new(0, 2, 0), Vector3.new(0, -10, 0), raycastParams)
+    if floorCheck and floorCheck.Instance and floorCheck.Instance.CanCollide then
+        return targetPos
     end
-    return root.Position - (root.CFrame.LookVector * 5)
+    return root.Position
 end
 
--- ТАЙКУН СКАНЕР
+-- TYCOON SCANNER
 local function getCheapestTycoonButton(disasterFolder)
     local cheapestBtn = nil
     local lowestPrice = math.huge
@@ -188,10 +176,10 @@ task.spawn(function()
                 return 
             end
 
-            -- ФИКС ПОСЛЕ СМЕРТИ: СБРОС СТАРЫХ ДАЛЕКИХ ТОЧЕК
+            -- СБРОС ПРИ СМЕРТИ
             if player.Character ~= lastCharacter then
                 lastCharacter = player.Character
-                wanderTarget = nil -- Полностью стираем точку из памяти, если персонаж сменился
+                wanderTarget = nil 
             end
 
             -- OBJECT DETECTION
@@ -212,7 +200,7 @@ task.spawn(function()
 
             -- LOGIC HIERARCHY
             if disaster24 then
-                Status.Text = "🛡️ DISASTER 24: ON SAFE PLATFORM"
+                Status.Text = "🛡️ DISASTER 24: TELEPORT SAFE"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(255, 0, 100)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(255, 0, 100)
                 targetOverride = nil
@@ -266,9 +254,9 @@ task.spawn(function()
                 if target then
                     targetOverride = target
                     if weapon.Name == "RocketLauncher" then
-                        if dist > 15 then walkPath(target.Position) else hum:MoveTo(root.Position) end
+                        if dist > 15 then smartMove(target.Position, false) else hum:MoveTo(root.Position) end
                     else
-                        walkDirect(target.Position)
+                        smartMove(target.Position, false)
                     end
                     root.CFrame = CFrame.new(root.Position, Vector3.new(target.Position.X, root.Position.Y, target.Position.Z))
                     workspace.CurrentCamera.CFrame = CFrame.new(workspace.CurrentCamera.CFrame.Position, target.Position)
@@ -288,9 +276,9 @@ task.spawn(function()
                 if distanceToBtn <= 4 then
                     hum.Jump = true
                     local drift = (tick() % 1 > 0.5) and 1 or -1
-                    walkDirect(tycoonBtn.Position + Vector3.new(drift, 0, 0))
+                    smartMove(tycoonBtn.Position + Vector3.new(drift, 0, 0), false)
                 else
-                    walkPath(tycoonBtn.Position)
+                    smartMove(tycoonBtn.Position, false)
                 end
 
             elseif winButton then
@@ -306,9 +294,9 @@ task.spawn(function()
                 if distanceToWinBtn <= 4 then
                     hum.Jump = true
                     local drift = (tick() % 1 > 0.5) and 1 or -1
-                    walkDirect(targetNode.Position + Vector3.new(drift, 0, 0))
+                    smartMove(targetNode.Position + Vector3.new(drift, 0, 0), false)
                 else
-                    walkPath(targetNode.Position)
+                    smartMove(targetNode.Position, false)
                 end
 
             elseif tableBtn then
@@ -317,16 +305,16 @@ task.spawn(function()
                 Status.Text = "SPAMMING GAME TABLE"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(255, 200, 0)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(255, 200, 0)
-                walkDirect(tableBtn.Parent.Position)
+                smartMove(tableBtn.Parent.Position, false)
                 if (root.Position - tableBtn.Parent.Position).Magnitude < 10 then fireclickdetector(tableBtn) end
 
             elseif win then
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
                 targetOverride = nil
-                Status.Text = "PATHFINDING TO VICTORY"
+                Status.Text = "MOVING TO WIN PART"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(180, 50, 255)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(180, 50, 255)
-                walkPath(win.Position)
+                smartMove(win.Position, false)
 
             elseif CLICKButton then
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
@@ -335,22 +323,21 @@ task.spawn(function()
                 GlowLine.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
                 local pos = CLICKButton:IsA("BasePart") and CLICKButton.Position or CLICKButton.Parent.Position
-                walkDirect(pos)
+                smartMove(pos, false)
                 if (root.Position - pos).Magnitude < 10 then
                     fireclickdetector(CLICKButton:FindFirstChildOfClass("ClickDetector") or CLICKButton)
                 end
             else
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
                 targetOverride = nil
-                Status.Text = "SMART ROAMING (SAFE IDLE)"
+                Status.Text = "LOCAL ROAMING (SAFE IDLE)"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(0, 255, 140)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(0, 255, 140)
                 
-                -- Если точки нет или подошли вплотную — берем новую РЯДОМ С СОБОЙ
-                if not wanderTarget or (root.Position - wanderTarget).Magnitude < 4 then
-                    wanderTarget = getSafeWanderPos(root)
+                if not wanderTarget or (root.Position - wanderTarget).Magnitude < 3 then
+                    wanderTarget = getLocalWanderPos(root)
                 end
-                walkDirect(wanderTarget)
+                smartMove(wanderTarget, true) -- Передаем true, чтобы ТП не срабатывал при обычном гулянии
             end
         end)
     end
