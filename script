@@ -13,8 +13,9 @@ local wanderTarget = nil
 local safePlatform = nil
 local lastCharacter = nil
 
--- Переменные для детектора застревания
+-- Переменные для детектора застревания (Исправлено)
 local stuckTime = 0
+local lastTargetPos = nil
 
 -- PREMIUM COMPACT GUI
 local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
@@ -68,44 +69,45 @@ game:GetService("GuiService").ErrorMessageChanged:Connect(function()
     game:GetService("TeleportService"):Teleport(game.PlaceId, player)
 end)
 
--- НАВИГАЦИЯ С АВТО-ТЕЛЕПОРТОМ ПРИ ЗАСТРЕВАНИИ ДЛЯ ВАЖНЫХ ЦЕЛЕЙ
+-- НАВИГАЦИЯ С ИСПРАВЛЕННЫМ ТАЙМЕРОМ ЗАСТРЕВАНИЯ
 local function smartMove(targetPos, isRoaming)
     local char = player.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not hum or not root then return end
 
+    -- Если цель сменилась, сбрасываем счетчик застревания
+    if lastTargetPos ~= targetPos then
+        lastTargetPos = targetPos
+        stuckTime = 0
+    end
+
     hum:MoveTo(targetPos)
 
-    -- Если персонаж почти не двигается (уперся в препятствие)
-    if root.AssemblyLinearVelocity.Magnitude < 2 then
-        stuckTime = stuckTime + 0.1
-        if stuckTime > 1.5 then -- Если стоим дольше 1.5 секунд
-            if isRoaming then
-                -- ЕСЛИ ЗАСТРЯЛ В ROAMING: Сбрасываем цель, чтобы мгновенно сменить путь
-                wanderTarget = nil 
-                stuckTime = 0
-            else
-                -- ЕСЛИ ЗАСТРЯЛ НА ВАЖНОЙ ЦЕЛИ: Телепортируемся прямо к ней сквозь стену
-                Status.Text = "⚡ OBSTACLE DETECTED! TELEPORTING..."
+    if not isRoaming then
+        -- Проверяем скорость: если она критически низкая (меньше 0.5 блоков в сек)
+        if root.AssemblyLinearVelocity.Magnitude < 0.5 then
+            stuckTime = stuckTime + 0.1
+            if stuckTime > 2.5 then -- Увеличено до 2.5 секунд, чтобы избежать ложных срабатываний
+                Status.Text = "⚡ STUCK! TELEPORTING TO TARGET"
                 root.CFrame = CFrame.new(targetPos + Vector3.new(0, 2, 0))
                 stuckTime = 0
-                task.wait(0.2)
+                task.wait(0.5) -- Даем персонажу время зафиксироваться на кнопке
             end
+        else
+            -- Плавно уменьшаем stuckTime, если мы движемся, а не сбрасываем мгновенно
+            stuckTime = math.max(0, stuckTime - 0.2)
         end
-    else
-        stuckTime = 0
     end
 end
 
--- УМНЫЙ РАСЧЕТ ROAMING: РАССТОЯНИЕ ОТ СЕБЯ + РЕЙКАСТ СТЕН + ЗАЩИТА ОТ ПРОПАСТИ
+-- ЛОКАЛЬНЫЙ ROAMING ОТ СЕБЯ
 local function getSmartWanderPos(root)
     local directions = {
         Vector3.new(1, 0, 0), Vector3.new(-1, 0, 0),
         Vector3.new(0, 0, 1), Vector3.new(0, 0, -1),
         Vector3.new(1, 0, 1).Unit, Vector3.new(-1, 0, -1).Unit
     }
-    -- Перемешиваем направления ходьбы
     for i = #directions, 2, -1 do
         local j = math.random(i)
         directions[i], directions[j] = directions[j], directions[i]
@@ -116,24 +118,17 @@ local function getSmartWanderPos(root)
     raycastParams.FilterDescendantsInstances = {player.Character}
 
     for _, dir in ipairs(directions) do
-        -- 1. Проверка стены перед собой (Не дальше 14 блоков, чтобы не уходить за карту)
         local wallCheck = workspace:Raycast(root.Position, dir * 14, raycastParams)
-        
         if not wallCheck then
-            -- Генерируем локальный шаг от себя строго в свободную сторону
             local stepDistance = math.random(7, 13)
             local checkPos = root.Position + (dir * stepDistance)
-            
-            -- 2. Проверка пропасти (Стреляем вниз из будущей точки)
             local floorCheck = workspace:Raycast(checkPos + Vector3.new(0, 2, 0), Vector3.new(0, -10, 0), raycastParams)
             
-            -- Если луч нашел пол и по нему можно ходить — одобряем точку
             if floorCheck and floorCheck.Instance and floorCheck.Instance.CanCollide then
                 return checkPos
             end
         end
     end
-    -- Запасной безопасный шаг назад, если впереди тупик или обрыв
     return root.Position - (root.CFrame.LookVector * 6)
 end
 
@@ -354,11 +349,10 @@ task.spawn(function()
                 GlowLine.BackgroundColor3 = Color3.fromRGB(0, 255, 140)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(0, 255, 140)
                 
-                -- Если точки нет или подошли вплотную — берем новую безопасную точку лучами от себя
                 if not wanderTarget or (root.Position - wanderTarget).Magnitude < 4 then
                     wanderTarget = getSmartWanderPos(root)
                 end
-                smartMove(wanderTarget, true) -- Передаем true (активация смены пути при застревании)
+                smartMove(wanderTarget, true)
             end
         end)
     end
