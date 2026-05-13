@@ -16,14 +16,11 @@ local Main = Instance.new("Frame", ScreenGui)
 Main.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 Main.BorderSizePixel = 0
 Main.Size = UDim2.new(0, 260, 0, 100)
-Main.Position = UDim2.new(0.5, -130, 0.05, 0) -- Сверху по центру, не мешает джойстику
+Main.Position = UDim2.new(0.5, -130, 0.05, 0)
 Main.Active = true
 Main.Draggable = true
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 12)
 
-local MainCorner = Instance.new("UICorner", Main)
-MainCorner.CornerRadius = UDim.new(0, 12)
-
--- Неоновая верхняя линия (Индикатор работы)
 local GlowLine = Instance.new("Frame", Main)
 GlowLine.Size = UDim2.new(1, 0, 0, 3)
 GlowLine.BorderSizePixel = 0
@@ -34,10 +31,8 @@ local InnerFrame = Instance.new("Frame", Main)
 InnerFrame.Size = UDim2.new(1, -20, 1, -25)
 InnerFrame.Position = UDim2.new(0, 10, 0, 15)
 InnerFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
-InnerFrame.BorderSizePixel = 0
 Instance.new("UICorner", InnerFrame).CornerRadius = UDim.new(0, 8)
 
--- Мигающий индикатор статуса
 local PulseDot = Instance.new("Frame", InnerFrame)
 PulseDot.Size = UDim2.new(0, 8, 0, 8)
 PulseDot.Position = UDim2.new(0, 15, 0, 26)
@@ -54,7 +49,7 @@ Status.TextSize = 13
 Status.Font = Enum.Font.GothamBold
 Status.TextXAlignment = Enum.TextXAlignment.Left
 
--- АНТИ-АФК И РЕДЖОИН
+-- ANTI-AFK & REJOIN
 player.Idled:Connect(function()
     game:GetService("VirtualUser"):CaptureController()
     game:GetService("VirtualUser"):ClickButton2(Vector2.new(0,0))
@@ -65,7 +60,7 @@ game:GetService("GuiService").ErrorMessageChanged:Connect(function()
     game:GetService("TeleportService"):Teleport(game.PlaceId, player)
 end)
 
--- ХОДЬБА PATHFINDING
+-- PATHFINDING MOVEMENT
 local function walkPath(targetPos)
     local char = player.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -90,7 +85,6 @@ local function walkPath(targetPos)
     end
 end
 
--- ОБЫЧНЫЙ ХОД
 local function walkDirect(targetPos)
     local char = player.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -101,19 +95,17 @@ local function walkDirect(targetPos)
     if root.AssemblyLinearVelocity.Magnitude < 3 then hum.Jump = true end
 end
 
--- СКАНЕР СТЕН И ОБРЫВОВ
+-- RAYCAST WANDERING
 local function getSafeWanderPos(root)
     local directions = {
         Vector3.new(1, 0, 0), Vector3.new(-1, 0, 0),
         Vector3.new(0, 0, 1), Vector3.new(0, 0, -1),
         Vector3.new(1, 0, 1).Unit, Vector3.new(-1, 0, -1).Unit
     }
-    
     for i = #directions, 2, -1 do
         local j = math.random(i)
         directions[i], directions[j] = directions[j], directions[i]
     end
-
     local raycastParams = RaycastParams.new()
     raycastParams.FilterType = Enum.RaycastFilterType.Exclude
     raycastParams.FilterDescendantsInstances = {player.Character}
@@ -123,16 +115,44 @@ local function getSafeWanderPos(root)
         if not wallCheck then
             local checkPos = root.Position + (dir * 18)
             local floorCheck = workspace:Raycast(checkPos + Vector3.new(0, 2, 0), Vector3.new(0, -15, 0), raycastParams)
-            
             if floorCheck and floorCheck.Instance and floorCheck.Instance.CanCollide then
                 return checkPos
             end
         end
     end
-    return root.Position - (root.CFrame.LookVector * 12) -- Откат назад если тупик
+    return root.Position - (root.CFrame.LookVector * 12)
 end
 
--- ГЛАВНЫЙ ЦИКЛ
+-- ФУНКЦИЯ ПОИСКА САМОЙ ДЕШЕВОЙ КНОПКИ ТАЙКУНА
+local function getCheapestTycoonButton(disasterFolder)
+    local cheapestBtn = nil
+    local lowestPrice = math.huge
+
+    for _, obj in ipairs(disasterFolder:GetDescendants()) do
+        if obj.Name == "IButton" and obj:FindFirstChild("Detect") then
+            pcall(function()
+                -- Проверяем путь IButton.Gui.Info.Price.Text
+                local gui = obj:FindFirstChild("Gui")
+                local info = gui and gui:FindFirstChild("Info")
+                local priceLabel = info and info:FindFirstChild("Price")
+                
+                if priceLabel and (priceLabel:IsA("TextLabel") or priceLabel:IsA("TextBox")) then
+                    -- Очищаем текст от знаков $, пробелов и букв, оставляя только цифры
+                    local priceText = priceLabel.Text:gsub("%D", "")
+                    local priceNum = tonumber(priceText)
+                    
+                    if priceNum and priceNum < lowestPrice then
+                        lowestPrice = priceNum
+                        cheapestBtn = obj:FindFirstChild("Detect")
+                    end
+                end
+            end)
+        end
+    end
+    return cheapestBtn, lowestPrice
+end
+
+-- MAIN AI LOOP
 task.spawn(function()
     while _G.BotRunning do
         task.wait(0.1)
@@ -144,18 +164,23 @@ task.spawn(function()
 
             if not root or not hum or hum.Health <= 0 then return end
 
-            -- ОБЪЕКТЫ
+            -- ОБЪЕКТЫ И СКАНИРОВАНИЕ КНОПОК ТАЙКУНА
             local water = disaster and disaster:FindFirstChild("Water", true)
             local win = disaster and disaster:FindFirstChild("Win", true)
             local tableBtn = disaster and disaster:FindFirstChild("TableNButtonClickDetector", true)
             local CLICKButton = workspace:FindFirstChild("CLICKButton", true)
             local weapon = char:FindFirstChild("ClassicSword") or player.Backpack:FindFirstChild("ClassicSword") or 
                            char:FindFirstChild("RocketLauncher") or player.Backpack:FindFirstChild("RocketLauncher")
+            
+            local tycoonBtn, tycoonPrice = nil, nil
+            if disaster then
+                tycoonBtn, tycoonPrice = getCheapestTycoonButton(disaster)
+            end
 
-            -- ИЕРАРХИЯ СМЕНЫ СТАТУСОВ И СВЕЧЕНИЯ GUI
+            -- ИЕРАРХИЯ ПРИОРИТЕТОВ
             if water then
                 Status.Text = "EVADING WATER (TELEPORT)"
-                GlowLine.BackgroundColor3 = Color3.fromRGB(255, 50, 50) -- Красный при опасности
+                GlowLine.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
                 local high = root.Position
                 for _, p in pairs(disaster:GetDescendants()) do
@@ -165,7 +190,7 @@ task.spawn(function()
 
             elseif weapon then
                 Status.Text = "HUNTING ENEMIES WITH " .. weapon.Name:upper()
-                GlowLine.BackgroundColor3 = Color3.fromRGB(255, 120, 0) -- Оранжевый во время охоты
+                GlowLine.BackgroundColor3 = Color3.fromRGB(255, 120, 0)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(255, 120, 0)
                 if weapon.Parent == player.Backpack then hum:EquipTool(weapon) end
                 local target = nil
@@ -182,22 +207,29 @@ task.spawn(function()
                     weapon:Activate()
                 end
 
+            -- НОВЫЙ ПРИОРИТЕТ: ТАЙКУН (Покупает самое дешевое, если нет глобальной опасности)
+            elseif tycoonBtn then
+                Status.Text = "TYCOON: BUYING CHEAPEST ($" .. tycoonPrice .. ")"
+                GlowLine.BackgroundColor3 = Color3.fromRGB(0, 230, 255) -- Бирюзовый для тайкуна
+                PulseDot.BackgroundColor3 = Color3.fromRGB(0, 230, 255)
+                walkDirect(tycoonBtn.Position)
+
             elseif tableBtn then
                 Status.Text = "SPAMMING GAME TABLE"
-                GlowLine.BackgroundColor3 = Color3.fromRGB(255, 200, 0) -- Желтый при кликах
+                GlowLine.BackgroundColor3 = Color3.fromRGB(255, 200, 0)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(255, 200, 0)
                 walkDirect(tableBtn.Parent.Position)
                 if (root.Position - tableBtn.Parent.Position).Magnitude < 10 then fireclickdetector(tableBtn) end
 
             elseif win then
                 Status.Text = "PATHFINDING TO VICTORY"
-                GlowLine.BackgroundColor3 = Color3.fromRGB(180, 50, 255) -- Фиолетовый при победе
+                GlowLine.BackgroundColor3 = Color3.fromRGB(180, 50, 255)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(180, 50, 255)
                 walkPath(win.Position)
 
             elseif CLICKButton then
                 Status.Text = "MOVING TO START BUTTON"
-                GlowLine.BackgroundColor3 = Color3.fromRGB(0, 150, 255) -- Синий по пути к кнопке
+                GlowLine.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
                 local pos = CLICKButton:IsA("BasePart") and CLICKButton.Position or CLICKButton.Parent.Position
                 walkDirect(pos)
@@ -206,7 +238,7 @@ task.spawn(function()
                 end
             else
                 Status.Text = "SMART ROAMING (SAFE IDLE)"
-                GlowLine.BackgroundColor3 = Color3.fromRGB(0, 255, 140) -- Зеленый в покое
+                GlowLine.BackgroundColor3 = Color3.fromRGB(0, 255, 140)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(0, 255, 140)
                 
                 if not wanderTarget or (root.Position - wanderTarget).Magnitude < 5 then
