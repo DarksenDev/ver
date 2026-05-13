@@ -1,65 +1,132 @@
+-- ОЧИСТКА СТАРЫХ ГУИ И ПОТОКОВ
+for _, old in pairs(game.CoreGui:GetChildren()) do
+    if old.Name == "SurvivorHub" then old:Destroy() end
+end
+
+_G.BotRunning = true
 local player = game.Players.LocalPlayer
+local TeleportService = game:GetService("TeleportService")
+local GuiService = game:GetService("GuiService")
+local VirtualUser = game:GetService("VirtualUser")
 
-local function characterLoop(character)
-    print("Character loop started for", character)
-    local humanoid = character:WaitForChild("Humanoid")
-    
-    while task.wait(1) do
-        if not character or not character.Parent then
-            print("Character dead, exiting loop")
-            break
-        end
-        
-        humanoid = character:FindFirstChildWhichIsA("Humanoid")
-        if not humanoid then break end
+local lastWander = 0
+local wanderTarget = nil
 
-        pcall(function()
-            humanoid.MaxHealth = 999999
-            humanoid.Health = 999999
-        end)
+-- GUI
+local sg = Instance.new("ScreenGui", game.CoreGui)
+sg.Name = "SurvivorHub"
+local frame = Instance.new("Frame", sg)
+frame.Size = UDim2.new(0, 220, 0, 90)
+frame.Position = UDim2.new(0.5, -110, 0.05, 0)
+frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+Instance.new("UICorner", frame)
 
-        local targetPart = nil
-        local disaster = workspace:FindFirstChild("Disaster")
-        if disaster then
-            local parts = disaster:GetDescendants()
-            if #parts > 0 then
-                local cand = parts[math.random(1, #parts)]
-                if cand:IsA("BasePart") then
-                    targetPart = cand
-                end
-            end
-        end
+local status = Instance.new("TextLabel", frame)
+status.Size = UDim2.new(1, 0, 1, 0)
+status.TextColor3 = Color3.new(1, 1, 1)
+status.BackgroundTransparency = 1
+status.Text = "AI ACTIVE (ANTI-AFK)"
+status.Font = Enum.Font.GothamBold
 
-        if not targetPart then
-            local map = workspace:FindFirstChild("Map")
-            if map then
-                local parts = map:GetDescendants()
-                if #parts > 0 then
-                    local cand = parts[math.random(1, #parts)]
-                    if cand:IsA("BasePart") then
-                        targetPart = cand
-                    end
-                end
-            end
-        end
+-- 1. ЛОГИКА АНТИ-АФК (Bypass 20 min kick)
+player.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new(0,0))
+    status.Text = "🛡️ ANTI-AFK TRIGGERED"
+end)
 
-        if targetPart and humanoid then
-            pcall(function()
-                humanoid:MoveTo(targetPart.Position)
-                humanoid.MoveToFinished:Wait(3)
-            end)
-        end
+-- 2. ЛОГИКА АВТО-РЕДЖОИНА (Auto Reconnect on Kick/Crash)
+GuiService.ErrorMessageChanged:Connect(function()
+    status.Text = "⚠️ DISCONNECTED! REJOINING..."
+    task.wait(5) -- Пауза перед перезаходом, чтобы игра успела закрыть старую сессию
+    TeleportService:Teleport(game.PlaceId, player)
+end)
+
+-- ТА САМАЯ РАБОЧАЯ ФУНКЦИЯ ХОДЬБЫ
+local function walk(targetPos)
+    local char = player.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not hum or not root then return end
+
+    hum:MoveTo(targetPos)
+    if root.AssemblyLinearVelocity.Magnitude < 3 then
+        hum.Jump = true
     end
 end
 
-local function onCharacterAdded(character)
-    coroutine.wrap(characterLoop)(character)
-end
+-- ГЛАВНЫЙ ИСПОЛНИТЕЛЬНЫЙ ЦИКЛ
+task.spawn(function()
+    while _G.BotRunning do
+        task.wait(0.15)
+        pcall(function()
+            local char = player.Character
+            local root = char:FindFirstChild("HumanoidRootPart")
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            local disaster = workspace:FindFirstChild("Disaster")
 
-if player.Character then
-    onCharacterAdded(player.Character)
-end
+            -- ОБЪЕКТЫ
+            local water = disaster and disaster:FindFirstChild("Water", true)
+            local win = disaster and disaster:FindFirstChild("Win", true)
+            local tableBtn = disaster and disaster:FindFirstChild("TableNButtonClickDetector", true)
+            local CLICKButton = workspace:FindFirstChild("CLICKButton", true)
+            local weapon = char:FindFirstChild("ClassicSword") or player.Backpack:FindFirstChild("ClassicSword") or 
+                           char:FindFirstChild("RocketLauncher") or player.Backpack:FindFirstChild("RocketLauncher")
 
-player.CharacterAdded:Connect(onCharacterAdded)
+            -- ЛОГИКА ПРИОРИТЕТОВ
+            if water then
+                status.Text = "⚡ TP: WATER EVASION"
+                local high = root.Position
+                for _, p in pairs(disaster:GetDescendants()) do
+                    if p:IsA("BasePart") and p.CanCollide and p.Position.Y > high.Y and p.Name ~= "Water" then 
+                        high = p.Position 
+                    end
+                end
+                root.CFrame = CFrame.new(high + Vector3.new(0, 5, 0))
 
-print("Main script running, waiting for character events...")
+            elseif weapon then
+                status.Text = "🚀 HUNTING: " .. weapon.Name
+                if weapon.Parent == player.Backpack then hum:EquipTool(weapon) end
+                local target = nil
+                local dist = 1000
+                for _, p in pairs(game.Players:GetPlayers()) do
+                    if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character.Humanoid.Health > 0 then
+                        local d = (root.Position - p.Character.HumanoidRootPart.Position).Magnitude
+                        if d < dist then dist = d target = p.Character.HumanoidRootPart end
+                    end
+                end
+                if target then
+                    walk(target.Position)
+                    root.CFrame = CFrame.new(root.Position, Vector3.new(target.Position.X, root.Position.Y, target.Position.Z))
+                    weapon:Activate()
+                end
+
+            elseif tableBtn then
+                status.Text = "🔘 CLICKING TABLE"
+                walk(tableBtn.Parent.Position)
+                if (root.Position - tableBtn.Parent.Position).Magnitude < 10 then 
+                    fireclickdetector(tableBtn) 
+                end
+
+            elseif win then
+                status.Text = "🏆 GOING TO WIN"
+                walk(win.Position)
+
+            elseif CLICKButton then
+                status.Text = "🎮 GOING TO START"
+                local pos = CLICKButton:IsA("BasePart") and CLICKButton.Position or CLICKButton.Parent.Position
+                walk(pos)
+                if (root.Position - pos).Magnitude < 10 then
+                    fireclickdetector(CLICKButton:FindFirstChildOfClass("ClickDetector") or CLICKButton)
+                end
+            else
+                status.Text = "🚶 WANDERING..."
+                if tick() - lastWander > 3 or not wanderTarget then
+                    lastWander = tick()
+                    wanderTarget = root.Position + Vector3.new(math.random(-30, 30), 0, math.random(-30, 30))
+                end
+                walk(wanderTarget)
+            end
+        end)
+    end
+end)
