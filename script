@@ -60,7 +60,7 @@ game:GetService("GuiService").ErrorMessageChanged:Connect(function()
     game:GetService("TeleportService"):Teleport(game.PlaceId, player)
 end)
 
--- PATHFINDING MOVEMENT
+-- ДВИЖЕНИЕ С ОБХОДОМ СТЕН
 local function walkPath(targetPos)
     local char = player.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -95,7 +95,7 @@ local function walkDirect(targetPos)
     if root.AssemblyLinearVelocity.Magnitude < 3 then hum.Jump = true end
 end
 
--- RAYCAST WANDERING
+-- ЛОКАЛЬНЫЙ ROAMING
 local function getSafeWanderPos(root)
     local directions = {
         Vector3.new(1, 0, 0), Vector3.new(-1, 0, 0),
@@ -106,24 +106,25 @@ local function getSafeWanderPos(root)
         local j = math.random(i)
         directions[i], directions[j] = directions[j], directions[i]
     end
+    
     local raycastParams = RaycastParams.new()
     raycastParams.FilterType = Enum.RaycastFilterType.Exclude
     raycastParams.FilterDescendantsInstances = {player.Character}
 
     for _, dir in ipairs(directions) do
-        local wallCheck = workspace:Raycast(root.Position, dir * 25, raycastParams)
+        local wallCheck = workspace:Raycast(root.Position, dir * 15, raycastParams)
         if not wallCheck then
-            local checkPos = root.Position + (dir * 18)
-            local floorCheck = workspace:Raycast(checkPos + Vector3.new(0, 2, 0), Vector3.new(0, -15, 0), raycastParams)
+            local checkPos = root.Position + (dir * math.random(8, 14))
+            local floorCheck = workspace:Raycast(checkPos + Vector3.new(0, 2, 0), Vector3.new(0, -10, 0), raycastParams)
             if floorCheck and floorCheck.Instance and floorCheck.Instance.CanCollide then
                 return checkPos
             end
         end
     end
-    return root.Position - (root.CFrame.LookVector * 12)
+    return root.Position - (root.CFrame.LookVector * 5)
 end
 
--- ФУНКЦИЯ ПОИСКА САМОЙ ДЕШЕВОЙ КНОПКИ
+-- ТАЙКУН КНОПКИ
 local function getCheapestTycoonButton(disasterFolder)
     local cheapestBtn = nil
     local lowestPrice = math.huge
@@ -150,6 +151,27 @@ local function getCheapestTycoonButton(disasterFolder)
     return cheapestBtn, lowestPrice
 end
 
+-- УМНОЕ НАВЕДЕНИЕ МЫШКИ (Для RocketLauncher)
+local mouse = player:GetMouse()
+local targetOverride = nil
+
+local mt = getrawmetatable(game)
+local oldIndex = mt.__index
+setreadonly(mt, false)
+
+mt.__index = newcclosure(function(self, key)
+    if self == mouse and targetOverride and targetOverride.Parent then
+        if key == "Hit" then
+            return targetOverride.CFrame
+        elseif key == "Target" then
+            return targetOverride
+        end
+    end
+    return oldIndex(self, key)
+end)
+setreadonly(mt, true)
+
+
 -- MAIN AI LOOP
 task.spawn(function()
     while _G.BotRunning do
@@ -160,13 +182,15 @@ task.spawn(function()
             local hum = char:FindFirstChildOfClass("Humanoid")
             local disaster = workspace:FindFirstChild("Disaster")
 
-            if not root or not hum or hum.Health <= 0 then return end
+            if not root or not hum or hum.Health <= 0 then targetOverride = nil return end
 
             -- ОБЪЕКТЫ
             local water = disaster and disaster:FindFirstChild("Water", true)
             local win = disaster and disaster:FindFirstChild("Win", true)
             local tableBtn = disaster and disaster:FindFirstChild("TableNButtonClickDetector", true)
             local CLICKButton = workspace:FindFirstChild("CLICKButton", true)
+            
+            -- ПРОВЕРКА ОРУЖИЯ (ClassicSword или RocketLauncher)
             local weapon = char:FindFirstChild("ClassicSword") or player.Backpack:FindFirstChild("ClassicSword") or 
                            char:FindFirstChild("RocketLauncher") or player.Backpack:FindFirstChild("RocketLauncher")
             
@@ -180,17 +204,21 @@ task.spawn(function()
                 Status.Text = "EVADING WATER (TELEPORT)"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+                targetOverride = nil
                 local high = root.Position
                 for _, p in pairs(disaster:GetDescendants()) do
                     if p:IsA("BasePart") and p.CanCollide and p.Position.Y > high.Y and p.Name ~= "Water" then high = p.Position end
                 end
                 root.CFrame = CFrame.new(high + Vector3.new(0, 5, 0))
 
+            -- ОХОТА С АВТОНАВЕДЕНИЕМ РАКЕТ
             elseif weapon then
                 Status.Text = "HUNTING ENEMIES WITH " .. weapon.Name:upper()
                 GlowLine.BackgroundColor3 = Color3.fromRGB(255, 120, 0)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(255, 120, 0)
+                
                 if weapon.Parent == player.Backpack then hum:EquipTool(weapon) end
+                
                 local target = nil
                 local dist = 1000
                 for _, p in pairs(game.Players:GetPlayers()) do
@@ -199,32 +227,46 @@ task.spawn(function()
                         if d < dist then dist = d target = p.Character.HumanoidRootPart end
                     end
                 end
+                
                 if target then
-                    walkDirect(target.Position)
-                    root.CFrame = CFrame.new(root.Position, Vector3.new(target.Position.X, root.Position.Y, target.Position.Z))
+                    targetOverride = target -- Перехватываем виртуальную мышку на врага
+                    
+                    -- Поведение сближения
+                    if weapon.Name == "RocketLauncher" then
+                        -- Ракетнице не обязательно бежать в упор, держим среднюю дистанцию
+                        if dist > 15 then walkPath(target.Position) else hum:MoveTo(root.Position) end
+                    else
+                        -- Меч требует бежать вплотную
+                        walkDirect(target.Position)
+                    end
+                    
+                    -- Наведение камеры и тела
+                    local targetLook = Vector3.new(target.Position.X, root.Position.Y, target.Position.Z)
+                    root.CFrame = CFrame.new(root.Position, targetLook)
+                    workspace.CurrentCamera.CFrame = CFrame.new(workspace.CurrentCamera.CFrame.Position, target.Position)
+                    
                     weapon:Activate()
+                else
+                    targetOverride = nil
                 end
 
-            -- ТАЙКУН + АКТИВНОЕ ТОПТАНИЕ НА КНОПКЕ
             elseif tycoonBtn then
+                targetOverride = nil
                 Status.Text = "TYCOON: BUYING ($" .. tycoonPrice .. ")"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(0, 230, 255)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(0, 230, 255)
                 
                 local distanceToBtn = (root.Position - tycoonBtn.Position).Magnitude
-                
                 if distanceToBtn <= 4 then
-                    -- Если встали на кнопку — начинаем жестко спамить прыжки и топтаться
                     hum.Jump = true
-                    -- Микро-шаги влево-вправо каждую долю секунды, чтобы обновить коллизию
                     local drift = (tick() % 1 > 0.5) and 1 or -1
                     walkDirect(tycoonBtn.Position + Vector3.new(drift, 0, 0))
                 else
-                    -- Если далеко — просто бежим к ней
-                    walkDirect(tycoonBtn.Position)
+                    walkPath(tycoonBtn.Position)
                 end
 
             elseif tableBtn then
+                targetOverride = nil
                 Status.Text = "SPAMMING GAME TABLE"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(255, 200, 0)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(255, 200, 0)
@@ -232,12 +274,14 @@ task.spawn(function()
                 if (root.Position - tableBtn.Parent.Position).Magnitude < 10 then fireclickdetector(tableBtn) end
 
             elseif win then
+                targetOverride = nil
                 Status.Text = "PATHFINDING TO VICTORY"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(180, 50, 255)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(180, 50, 255)
                 walkPath(win.Position)
 
             elseif CLICKButton then
+                targetOverride = nil
                 Status.Text = "MOVING TO START BUTTON"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
@@ -247,11 +291,12 @@ task.spawn(function()
                     fireclickdetector(CLICKButton:FindFirstChildOfClass("ClickDetector") or CLICKButton)
                 end
             else
+                targetOverride = nil
                 Status.Text = "SMART ROAMING (SAFE IDLE)"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(0, 255, 140)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(0, 255, 140)
                 
-                if not wanderTarget or (root.Position - wanderTarget).Magnitude < 5 then
+                if not wanderTarget or (root.Position - wanderTarget).Magnitude < 4 then
                     wanderTarget = getSafeWanderPos(root)
                 end
                 walkDirect(wanderTarget)
