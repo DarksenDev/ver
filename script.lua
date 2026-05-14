@@ -61,21 +61,39 @@ game:GetService("GuiService").ErrorMessageChanged:Connect(function()
     task.wait(5) game:GetService("TeleportService"):Teleport(game.PlaceId, player)
 end)
 
--- НАВИГАЦИЯ
-local function walkSmooth(targetPos)
+-- УМНЫЙ PATHFINDING ДЛЯ ОБХОДА СТЕН (Win, Tycoon, WinBUTTON)
+local function walkPath(targetPos)
     local char = player.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not hum or not root then return end
 
-    hum:MoveTo(targetPos)
-    if root.AssemblyLinearVelocity.Magnitude < 3 then
-        hum.Jump = true
-        local sideBypass = targetPos + Vector3.new(math.random(-8, 8), 0, math.random(-8, 8))
-        hum:MoveTo(sideBypass)
+    -- AgentRadius = 3.5 заставляет бота обходить углы шире, чтобы не цепляться за текстуры
+    local path = Pathfinding:CreatePath({AgentRadius = 3.5, AgentCanJump = true, WaypointSpacing = 4}) [1, 2]
+    local success, _ = pcall(function() path:ComputeAsync(root.Position, targetPos) end) [2]
+    
+    if success and path.Status == Enum.PathStatus.Success then [2]
+        local wps = path:GetWaypoints() [2]
+        for i = 1, math.min(#wps, 4) do
+            if not _G.BotRunning or hum.Health <= 0 then break end
+            hum:MoveTo(wps[i].Position) [2]
+            if wps[i].Action == Enum.PathWaypointAction.Jump then hum.Jump = true end [2]
+            
+            local arrived = hum.MoveToFinished:Wait(0.2)
+            if not arrived and root.AssemblyLinearVelocity.Magnitude < 2.5 then 
+                hum.Jump = true 
+                wanderTarget = nil
+                break 
+            end
+        end
+    else
+        -- Если путь заблокирован намертво, идём напрямую с прыжками (Резервный вариант)
+        hum:MoveTo(targetPos)
+        if root.AssemblyLinearVelocity.Magnitude < 2.5 then hum.Jump = true wanderTarget = nil end
     end
 end
 
+-- ОБЫЧНЫЙ ПРЯМОЙ ХОД (Для лобби и открытых пространств)
 local function walkDirect(targetPos)
     local char = player.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -174,7 +192,7 @@ task.spawn(function()
             if not root or not hum or hum.Health <= 0 then targetOverride = nil isHoldingRocket = false return end
             if player.Character ~= lastCharacter then lastCharacter = player.Character wanderTarget = nil end
 
-            -- УЛУЧШЕННОЕ ГЛОБАЛЬНОЕ ОПРЕДЕЛЕНИЕ ЛЮБОЙ ВОДЫ
+            -- ГЛОБАЛЬНОЕ ОПРЕДЕЛЕНИЕ ЛЮБОЙ ВОДЫ
             local waterDetected = false
             if disaster then
                 for _, v in ipairs(disaster:GetDescendants()) do
@@ -226,7 +244,7 @@ task.spawn(function()
 
             elseif waterDetected then
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
-                Status.Text = "⚡ EMERGENCY TP: EVADING WATER/FLOOD"
+                Status.Text = "⚡ GLOBAL FLOOD TP ESCAPE"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
                 targetOverride = nil; isHoldingRocket = false
@@ -234,10 +252,18 @@ task.spawn(function()
                 local bestSafePoint = root.Position
                 local maxElevation = -math.huge
 
-                for _, p in pairs(disaster:GetDescendants()) do
+                for _, p in pairs(workspace:GetDescendants()) do
                     if p:IsA("BasePart") and p.CanCollide and p.Transparency < 0.9 then
-                        local nameLower = string.lower(p.Name)
-                        if not string.find(nameLower, "water") and not string.find(nameLower, "flood") and not string.find(nameLower, "liquid") and not string.find(nameLower, "zone") then
+                        local pathString = string.lower(p:GetFullName())
+                        if not string.find(pathString, "island") and 
+                           not string.find(pathString, "diedplace") and 
+                           not string.find(pathString, "tower") and 
+                           not string.find(pathString, "water") and 
+                           not string.find(pathString, "flood") and 
+                           not string.find(pathString, "liquid") and 
+                           not string.find(pathString, "zone") and
+                           not p:IsDescendantOf(char) then
+                            
                             if p.Size.X >= 4 and p.Size.Z >= 4 then
                                 if p.Position.Y > maxElevation then
                                     maxElevation = p.Position.Y
@@ -286,7 +312,7 @@ task.spawn(function()
                 GlowLine.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
                 targetOverride = nil; isHoldingRocket = false
                 local shelter = disaster:FindFirstChildWhichIsA("BasePart", true)
-                if shelter and shelter.Anchored then walkSmooth(shelter.Position) end
+                if shelter and shelter.Anchored then walkPath(shelter.Position) end
 
             elseif d7 then
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
@@ -344,7 +370,7 @@ task.spawn(function()
                 if target then
                     targetOverride = target
                     if isHoldingRocket then
-                        if dist > 10 then walkSmooth(target.Position) else hum:MoveTo(root.Position) end
+                        if dist > 10 then walkPath(target.Position) else hum:MoveTo(root.Position) end
                         workspace.CurrentCamera.CFrame = CFrame.new(workspace.CurrentCamera.CFrame.Position, target.Position)
                     else 
                         targetOverride = nil; isHoldingRocket = false
@@ -369,7 +395,7 @@ task.spawn(function()
                     local drift = (tick() % 1 > 0.5) and 1 or -1
                     walkDirect(tycoonBtn.Position + Vector3.new(drift, 0, 0))
                 else
-                    walkSmooth(tycoonBtn.Position)
+                    walkPath(tycoonBtn.Position)
                 end
 
             elseif winButton then
@@ -387,7 +413,7 @@ task.spawn(function()
                     local drift = (tick() % 1 > 0.5) and 1 or -1
                     walkDirect(targetNode.Position + Vector3.new(drift, 0, 0))
                 else
-                    walkSmooth(targetNode.Position)
+                    walkPath(targetNode.Position)
                 end
 
             elseif tableBtn then
@@ -399,13 +425,14 @@ task.spawn(function()
                 walkDirect(tableBtn.Parent.Position)
                 if (root.Position - tableBtn.Parent.Position).Magnitude < 10 then fireclickdetector(tableBtn) end
 
+            -- ВЕРНУЛ УМНЫЙ PATHFINDING ДЛЯ WIN PART
             elseif win then
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
                 targetOverride = nil; isHoldingRocket = false
-                Status.Text = "GOING TO WIN PART..."
+                Status.Text = "PATHFINDING TO WIN PART..."
                 GlowLine.BackgroundColor3 = Color3.fromRGB(180, 50, 255)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(180, 50, 255)
-                walkSmooth(win.Position)
+                walkPath(win.Position) -- Теперь он огибает любые лабиринты и стены
 
             elseif CLICKButton then
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
