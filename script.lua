@@ -46,7 +46,7 @@ local Status = Instance.new("TextLabel", InnerFrame)
 Status.Size = UDim2.new(1, -40, 1, 0)
 Status.Position = UDim2.new(0, 32, 0, 0)
 Status.BackgroundTransparency = 1
-Status.Text = "INITIALIZING AGENT..."
+Status.Text = "INITIALIZING MULTI-AI..."
 Status.TextColor3 = Color3.fromRGB(245, 245, 245)
 Status.TextSize = 12
 Status.Font = Enum.Font.GothamBold
@@ -62,25 +62,17 @@ game:GetService("GuiService").ErrorMessageChanged:Connect(function()
 end)
 
 -- НАВИГАЦИЯ
-local function walkPath(targetPos)
+local function walkSmooth(targetPos)
     local char = player.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not hum or not root then return end
-    local path = Pathfinding:CreatePath({AgentRadius = 2.5, AgentCanJump = true, WaypointSpacing = 4})
-    local success, _ = pcall(function() path:ComputeAsync(root.Position, targetPos) end)
-    if success and path.Status == Enum.PathStatus.Success then
-        local wps = path:GetWaypoints()
-        for i = 1, math.min(#wps, 4) do
-            if not _G.BotRunning or hum.Health <= 0 then break end
-            hum:MoveTo(wps[i].Position)
-            if wps[i].Action == Enum.PathWaypointAction.Jump then hum.Jump = true end
-            local arrived = hum.MoveToFinished:Wait(0.2)
-            if not arrived and root.AssemblyLinearVelocity.Magnitude < 2.5 then hum.Jump = true wanderTarget = nil break end
-        end
-    else
-        hum:MoveTo(targetPos)
-        if root.AssemblyLinearVelocity.Magnitude < 2.5 then hum.Jump = true wanderTarget = nil end
+
+    hum:MoveTo(targetPos)
+    if root.AssemblyLinearVelocity.Magnitude < 3 then
+        hum.Jump = true
+        local sideBypass = targetPos + Vector3.new(math.random(-8, 8), 0, math.random(-8, 8))
+        hum:MoveTo(sideBypass)
     end
 end
 
@@ -100,6 +92,58 @@ local function getLocalWanderPos(root)
     return root.Position + Vector3.new(rx, 0, rz)
 end
 
+-- ПОИСК БЛИЖАЙШЕГО ЗОМБИ ИЛИ СНЕГОВИКА
+local function getClosestMonster(root, disasterFolder)
+    local closest = nil
+    local minDist = 25
+    local scanTargets = {}
+    if disasterFolder then table.insert(scanTargets, disasterFolder) end
+    table.insert(scanTargets, workspace)
+
+    for _, container in ipairs(scanTargets) do
+        for _, obj in ipairs(container:GetChildren()) do
+            if (string.find(string.lower(obj.Name), "zombie") or string.find(string.lower(obj.Name), "snowman")) and obj:FindFirstChild("HumanoidRootPart") then
+                local d = (root.Position - obj.HumanoidRootPart.Position).Magnitude
+                if d < minDist then minDist = d closest = obj.HumanoidRootPart end
+            end
+        end
+    end
+    return closest
+end
+
+-- ПОИСК ОПАСНЫХ ЛАЗЕРОВ
+local function getClosestLaser(root, disasterFolder)
+    if not disasterFolder then return nil end
+    for _, obj in ipairs(disasterFolder:GetDescendants()) do
+        if obj:IsA("BasePart") and obj.Name == "Kill" then
+            local d = (root.Position - obj.Position).Magnitude
+            if d < 12 then return obj end
+        end
+    end
+    return nil
+end
+
+-- TYCOON SCANNER
+local function getCheapestTycoonButton(disasterFolder)
+    local cheapestBtn = nil
+    local lowestPrice = math.huge
+    for _, obj in ipairs(disasterFolder:GetDescendants()) do
+        if obj.Name == "IButton" and obj:FindFirstChild("Detect") then
+            pcall(function()
+                local gui = obj:FindFirstChild("Gui")
+                local info = gui and gui:FindFirstChild("Info")
+                local priceLabel = info and info:FindFirstChild("Price")
+                if priceLabel and (priceLabel:IsA("TextLabel") or priceLabel:IsA("TextBox")) then
+                    local priceText = priceLabel.Text:gsub("%D", "")
+                    local priceNum = tonumber(priceText)
+                    if priceNum and priceNum < lowestPrice then lowestPrice = priceNum cheapestBtn = obj:FindFirstChild("Detect") end
+                end
+            end)
+        end
+    end
+    return cheapestBtn, lowestPrice
+end
+
 -- VIRTUAL MOUSE INTERCEPT
 local mouse = player:GetMouse()
 local targetOverride = nil
@@ -108,7 +152,6 @@ local isHoldingRocket = false
 local mt = getrawmetatable(game)
 local oldIndex = mt.__index
 setreadonly(mt, false)
-
 mt.__index = newcclosure(function(self, key)
     if self == mouse and isHoldingRocket and targetOverride and targetOverride.Parent then
         if key == "Hit" then return targetOverride.CFrame
@@ -131,25 +174,40 @@ task.spawn(function()
             if not root or not hum or hum.Health <= 0 then targetOverride = nil isHoldingRocket = false return end
             if player.Character ~= lastCharacter then lastCharacter = player.Character wanderTarget = nil end
 
-            -- КАТАСТРОФЫ И СОБЫТИЯ
-            local d1_17 = disaster and (disaster:FindFirstChild("Disaster1") or disaster:FindFirstChild("Disaster17") or disaster:FindFirstChild("Water", true) or disaster:FindFirstChild("Flood", true))
+            -- УЛУЧШЕННОЕ ГЛОБАЛЬНОЕ ОПРЕДЕЛЕНИЕ ЛЮБОЙ ВОДЫ/FLOOD/TSUNAMI
+            local waterDetected = false
+            if disaster then
+                -- Ищем совпадения по именам Water, Flood, Liquid, Disaster1, Disaster17 в папке и подпапках
+                for _, v in ipairs(disaster:GetDescendants()) do
+                    if v:IsA("BasePart") and (string.find(string.lower(v.Name), "water") or string.find(string.lower(v.Name), "flood") or string.find(string.lower(v.Name), "liquid") or v.Name == "Disaster1" or v.Name == "Disaster17") then
+                        waterDetected = true
+                        break
+                    end
+                end
+            end
+
+            -- ОСТАЛЬНЫЕ КАТАСТРОФЫ
             local d2 = disaster and (disaster:FindFirstChild("Disaster2") or disaster:FindFirstChild("Hamster", true))
             local d4 = disaster and disaster:FindFirstChild("Disaster4")
-            local d5 = disaster and (disaster:FindFirstChild("Disaster5") or workspace:FindFirstChild("Zombie") or workspace:FindFirstChild("Zombie", true))
             local d6 = disaster and disaster:FindFirstChild("Disaster6")
             local d7 = disaster and disaster:FindFirstChild("Disaster7")
             local d12 = disaster and disaster:FindFirstChild("Disaster12")
             local d14_15 = disaster and (disaster:FindFirstChild("Disaster14") or disaster:FindFirstChild("Disaster15"))
-            local d19 = disaster and disaster:FindFirstChild("Disaster19")
-            local d20 = disaster and (disaster:FindFirstChild("Disaster20") or workspace:FindFirstChild("Snowman") or workspace:FindFirstChild("Snowman", true))
             local d22 = disaster and disaster:FindFirstChild("Disaster22")
             local d24 = disaster and disaster:FindFirstChild("Disaster24")
+
+            local activeMonster = getClosestMonster(root, disaster)
+            local dangerousLaser = getClosestLaser(root, disaster)
 
             local win = disaster and disaster:FindFirstChild("Win", true)
             local CLICKButton = workspace:FindFirstChild("CLICKButton", true)
             local weapon = char:FindFirstChild("ClassicSword") or player.Backpack:FindFirstChild("ClassicSword") or char:FindFirstChild("RocketLauncher") or player.Backpack:FindFirstChild("RocketLauncher")
 
-            -- ИЕРАРХИЯ ЛОГИКИ
+            local tycoonBtn, tycoonPrice = nil, nil
+            local winButton = disaster and disaster:FindFirstChild("WinBUTTON", true)
+            if disaster then tycoonBtn, tycoonPrice = getCheapestTycoonButton(disaster) end
+
+            -- ИЕРАРХИЯ ЛОГИКИ С ИСПРАВЛЕННЫМ FLOOD TP
             if d24 then
                 Status.Text = "EVENT 24: COLOR BLOCK SAFE"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(255, 0, 100)
@@ -168,33 +226,55 @@ task.spawn(function()
                 end
                 if (root.Position - platformPos).Magnitude > 4 then root.CFrame = CFrame.new(platformPos) else hum:MoveTo(root.Position) end
 
-            elseif d1_17 then
+            -- 100% ФИКС ТЕЛЕПОРТА ОТ НАВОДНЕНИЙ FLOOD И TSUNAMI
+            elseif waterDetected then
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
-                Status.Text = "EVENT 1/17: WATER TP ESCAPE"
+                Status.Text = "⚡ EMERGENCY TP: EVADING WATER/FLOOD"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
                 targetOverride = nil; isHoldingRocket = false
+
                 local bestSafePoint = root.Position
                 local maxElevation = -math.huge
+
+                -- Ищем самую надежную деталь в Disaster для спасения
                 for _, p in pairs(disaster:GetDescendants()) do
-                    if p:IsA("BasePart") and p.CanCollide and p.Name ~= "Water" and p.Name ~= "Flood" and p.Size.X >= 4 and p.Size.Z >= 4 then
-                        if p.Position.Y > maxElevation then maxElevation = p.Position.Y bestSafePoint = p.Position end
+                    if p:IsA("BasePart") and p.CanCollide and p.Transparency < 0.9 then
+                        local nameLower = string.lower(p.Name)
+                        -- Жестко игнорируем саму воду, жижу, триггеры и зоны спавна
+                        if not string.find(nameLower, "water") and not string.find(nameLower, "flood") and not string.find(nameLower, "liquid") and not string.find(nameLower, "zone") then
+                            -- Фильтр устойчивости: деталь должна быть широкой (не столб и не тонкая балка)
+                            if p.Size.X >= 4 and p.Size.Z >= 4 then
+                                -- Выбираем абсолютный максимум высоты на устойчивой поверхности
+                                if p.Position.Y > maxElevation then
+                                    maxElevation = p.Position.Y
+                                    bestSafePoint = p.Position
+                                end
+                            end
+                        end
                     end
                 end
+                -- Смещаемся ровно на центр крыши/платформы и прибавляем +4 блока для безопасности
                 root.CFrame = CFrame.new(bestSafePoint + Vector3.new(0, 4, 0))
 
-            elseif d5 or d20 then
+            elseif activeMonster then
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
-                Status.Text = "EVENT 5/20: FLEEING MONSTER"
+                Status.Text = "⚠️ ESCAPING MONSTER!"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(255, 0, 50)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(255, 0, 50)
                 targetOverride = nil; isHoldingRocket = false
-                local monster = d5 or d20
-                if monster and monster:FindFirstChild("HumanoidRootPart") then
-                    if (root.Position - monster.HumanoidRootPart.Position).Magnitude < 25 then
-                        walkDirect(root.Position + (root.Position - monster.HumanoidRootPart.Position).Unit * 30)
-                    end
-                end
+                local escapeDirection = (root.Position - activeMonster.Position).Unit * 25
+                walkDirect(root.Position + escapeDirection)
+
+            elseif dangerousLaser then
+                if safePlatform then safePlatform:Destroy() safePlatform = nil end
+                Status.Text = "⚡ DODGING 'KILL' LASER!"
+                GlowLine.BackgroundColor3 = Color3.fromRGB(255, 0, 255)
+                PulseDot.BackgroundColor3 = Color3.fromRGB(255, 0, 255)
+                targetOverride = nil; isHoldingRocket = false
+                hum.Jump = true
+                local dodgeVector = Vector3.new(dangerousLaser.CFrame.LookVector.Z, 0, -dangerousLaser.CFrame.LookVector.X) * 12
+                walkDirect(root.Position + dodgeVector)
 
             elseif d2 then
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
@@ -224,7 +304,7 @@ task.spawn(function()
                 GlowLine.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
                 targetOverride = nil; isHoldingRocket = false
                 local shelter = disaster:FindFirstChildWhichIsA("BasePart", true)
-                if shelter and shelter.Anchored then walkPath(shelter.Position) end
+                if shelter and shelter.Anchored then walkSmooth(shelter.Position) end
 
             elseif d7 then
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
@@ -265,14 +345,6 @@ task.spawn(function()
                     end
                 end
 
-            elseif d19 then
-                if safePlatform then safePlatform:Destroy() safePlatform = nil end
-                Status.Text = "EVENT 19: DODGING LASERS"
-                GlowLine.BackgroundColor3 = Color3.fromRGB(255, 0, 255)
-                targetOverride = nil; isHoldingRocket = false
-                local laser = disaster:FindFirstChild("Laser", true) or disaster:FindFirstChildWhichIsA("BasePart", true)
-                if laser and (laser.Position - root.Position).Magnitude < 8 then hum.Jump = true end
-
             elseif weapon then
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
                 Status.Text = "HUNTING ENEMIES WITH " .. weapon.Name:upper()
@@ -290,10 +362,10 @@ task.spawn(function()
                 if target then
                     targetOverride = target
                     if isHoldingRocket then
-                        if dist > 10 then walkPath(target.Position) else hum:MoveTo(root.Position) end
+                        if dist > 10 then walkSmooth(target.Position) else hum:MoveTo(root.Position) end
                         workspace.CurrentCamera.CFrame = CFrame.new(workspace.CurrentCamera.CFrame.Position, target.Position)
                     else 
-                        targetOverride = nil
+                        targetOverride = nil; isHoldingRocket = false
                         walkDirect(target.Position) 
                     end
                     root.CFrame = CFrame.new(root.Position, Vector3.new(target.Position.X, root.Position.Y, target.Position.Z))
@@ -302,12 +374,56 @@ task.spawn(function()
                     targetOverride = nil; isHoldingRocket = false
                 end
 
+            elseif tycoonBtn then
+                if safePlatform then safePlatform:Destroy() safePlatform = nil end
+                targetOverride = nil; isHoldingRocket = false
+                Status.Text = "TYCOON: BUYING ($" .. tycoonPrice .. ")"
+                GlowLine.BackgroundColor3 = Color3.fromRGB(0, 230, 255)
+                PulseDot.BackgroundColor3 = Color3.fromRGB(0, 230, 255)
+                
+                local distanceToBtn = (root.Position - tycoonBtn.Position).Magnitude
+                if distanceToBtn <= 4 then
+                    hum.Jump = true
+                    local drift = (tick() % 1 > 0.5) and 1 or -1
+                    walkDirect(tycoonBtn.Position + Vector3.new(drift, 0, 0))
+                else
+                    walkSmooth(tycoonBtn.Position)
+                end
+
+            elseif winButton then
+                if safePlatform then safePlatform:Destroy() safePlatform = nil end
+                targetOverride = nil; isHoldingRocket = false
+                Status.Text = "TYCOON FINISHED: WINBUTTON ACTIVE"
+                GlowLine.BackgroundColor3 = Color3.fromRGB(255, 0, 180)
+                PulseDot.BackgroundColor3 = Color3.fromRGB(255, 0, 180)
+                
+                local targetNode = winButton:FindFirstChild("Detect") or winButton:FindFirstChildWhichIsA("BasePart", true) or winButton
+                local distanceToWinBtn = (root.Position - targetNode.Position).Magnitude
+                
+                if distanceToWinBtn <= 4 then
+                    hum.Jump = true
+                    local drift = (tick() % 1 > 0.5) and 1 or -1
+                    walkDirect(targetNode.Position + Vector3.new(drift, 0, 0))
+                else
+                    walkSmooth(targetNode.Position)
+                end
+
+            elseif tableBtn then
+                if safePlatform then safePlatform:Destroy() safePlatform = nil end
+                targetOverride = nil; isHoldingRocket = false
+                Status.Text = "SPAMMING GAME TABLE"
+                GlowLine.BackgroundColor3 = Color3.fromRGB(255, 200, 0)
+                PulseDot.BackgroundColor3 = Color3.fromRGB(255, 200, 0)
+                walkDirect(tableBtn.Parent.Position)
+                if (root.Position - tableBtn.Parent.Position).Magnitude < 10 then fireclickdetector(tableBtn) end
+
             elseif win then
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
                 targetOverride = nil; isHoldingRocket = false
-                Status.Text = "PATHFINDING TO WIN PART"
+                Status.Text = "GOING TO WIN PART..."
                 GlowLine.BackgroundColor3 = Color3.fromRGB(180, 50, 255)
-                walkPath(win.Position)
+                PulseDot.BackgroundColor3 = Color3.fromRGB(180, 50, 255)
+                walkSmooth(win.Position)
 
             elseif CLICKButton then
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
