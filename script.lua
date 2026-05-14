@@ -100,14 +100,13 @@ local function walkDirect(targetPos)
     if root.AssemblyLinearVelocity.Magnitude < 2.5 then hum.Jump = true wanderTarget = nil end
 end
 
--- НОВАЯ ФУНКЦИЯ НОКЛИП-ПЕРЕМЕЩЕНИЯ К УКРЫТИЮ (проходит сквозь стены)
+-- НОКЛИП-ПЕРЕМЕЩЕНИЕ К УКРЫТИЮ (проходит сквозь стены)
 local function forceToShelter(targetPos)
     local char = player.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not hum or not root then return end
 
-    -- Собираем все части с CanCollide и отключаем их (ноклип)
     local collidableParts = {}
     for _, part in ipairs(char:GetDescendants()) do
         if part:IsA("BasePart") and part.CanCollide then
@@ -117,13 +116,12 @@ local function forceToShelter(targetPos)
     end
 
     local start = tick()
-    local maxTime = 5 -- максимум 5 секунд ноклипа
+    local maxTime = 5
     while (root.Position - targetPos).Magnitude > 2 and tick() - start < maxTime and _G.BotRunning do
         local direction = (targetPos - root.Position).Unit
         local step = math.min(3, (root.Position - targetPos).Magnitude)
         local newPos = root.Position + direction * step
         
-        -- Удерживаем высоту: рейкаст вниз и подъём на 3 стада над найденной поверхностью
         local ray = Ray.new(newPos + Vector3.new(0, 10, 0), Vector3.new(0, -20, 0))
         local hitPart, hitPos = workspace:FindPartOnRay(ray, char)
         if hitPart then
@@ -133,7 +131,6 @@ local function forceToShelter(targetPos)
         task.wait(0.1)
     end
 
-    -- Восстанавливаем коллизии
     for _, part in ipairs(collidableParts) do
         pcall(function() part.CanCollide = true end)
     end
@@ -198,6 +195,54 @@ local function getCheapestTycoonButton(disasterFolder)
     return cheapestBtn, lowestPrice
 end
 
+-- УМНЫЙ ПОБЕГ ОТ МОНСТРОВ (сканирует 8 направлений, избегает стен)
+local function escapeSmartMonster(root, monsterPos)
+    local char = player.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not hum or not root then return end
+    
+    local awayDir = (root.Position - monsterPos).Unit
+    -- 8 направлений: прямо назад + 3 боковых в каждую сторону + диагонали
+    local angles = {0, 45, -45, 90, -90, 135, -135, 180}
+    local bestDir = nil
+    local bestDist = 0
+    
+    for _, angle in ipairs(angles) do
+        local rad = math.rad(angle)
+        local dir = Vector3.new(
+            awayDir.X * math.cos(rad) - awayDir.Z * math.sin(rad),
+            0,
+            awayDir.X * math.sin(rad) + awayDir.Z * math.cos(rad)
+        ).Unit
+        
+        -- Рейкастим на 15 стадов в этом направлении
+        local rayOrigin = root.Position + Vector3.new(0, 2, 0)
+        local ray = Ray.new(rayOrigin, dir * 15)
+        local hit = workspace:FindPartOnRay(ray, char)
+        
+        if not hit then
+            -- Путь свободен
+            bestDir = dir
+            break
+        else
+            local hitDist = (hit.Position - rayOrigin).Magnitude
+            if hitDist > bestDist then
+                bestDist = hitDist
+                bestDir = dir
+            end
+        end
+    end
+    
+    -- Если все направления заблокированы — прыгаем и пробиваемся
+    if not bestDir or bestDist < 5 then
+        hum.Jump = true
+        bestDir = awayDir
+    end
+    
+    local escapePos = root.Position + bestDir * 20
+    walkDirect(escapePos)
+end
+
 -- VIRTUAL MOUSE INTERCEPT
 local mouse = player:GetMouse()
 local targetOverride = nil
@@ -244,7 +289,7 @@ task.spawn(function()
             local d6 = disaster and disaster:FindFirstChild("Disaster6")
             local d7 = disaster and disaster:FindFirstChild("Disaster7")
             local d12 = disaster and disaster:FindFirstChild("Disaster12")
-            local d14_15 = disaster and (disaster:FindFirstChild("Disaster14") or disaster:FindFirstChild("Disaster15"))
+            local d15 = disaster and disaster:FindFirstChild("Disaster15")
             local d22 = disaster and disaster:FindFirstChild("Disaster22")
             local d24 = disaster and disaster:FindFirstChild("Disaster24")
 
@@ -313,12 +358,11 @@ task.spawn(function()
 
             elseif activeMonster then
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
-                Status.Text = "⚠️ ESCAPING MONSTER!"
+                Status.Text = "⚠️ SMART ESCAPING MONSTER!"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(255, 0, 50)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(255, 0, 50)
                 targetOverride = nil; isHoldingRocket = false
-                local escapeDirection = (root.Position - activeMonster.Position).Unit * 25
-                walkDirect(root.Position + escapeDirection)
+                escapeSmartMonster(root, activeMonster.Position)
 
             elseif dangerousLaser then
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
@@ -349,7 +393,7 @@ task.spawn(function()
                 targetOverride = nil; isHoldingRocket = false
                 local shelter = disaster:FindFirstChildWhichIsA("BasePart", true)
                 if shelter and shelter.Anchored then
-                    forceToShelter(shelter.Position)   -- НОКЛИП ВКЛЮЧЁН
+                    forceToShelter(shelter.Position)
                 end
 
             elseif d7 then
@@ -380,14 +424,14 @@ task.spawn(function()
                     end
                 end
 
-            elseif d12 or d14_15 then
+            elseif d12 or d15 then  -- ТОЛЬКО Disaster12 и Disaster15 (Disaster14 убран)
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
-                Status.Text = "EVENT 12/14/15: SHELTER (NOCLIP)"
+                Status.Text = "EVENT 12/15: SHELTER (NOCLIP)"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(50, 50, 100)
                 targetOverride = nil; isHoldingRocket = false
                 for _, obj in pairs(disaster:GetDescendants()) do
                     if obj:IsA("BasePart") and obj.Position.Y > root.Position.Y + 8 and obj.Size.X > 6 then
-                        forceToShelter(obj.Position - Vector3.new(0, 8, 0))   -- НОКЛИП
+                        forceToShelter(obj.Position - Vector3.new(0, 8, 0))
                         break
                     end
                 end
