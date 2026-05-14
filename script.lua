@@ -123,7 +123,7 @@ local function getClosestLaser(root, disasterFolder)
     return nil
 end
 
--- TYCOON SCANNER
+-- TYCOON IBUTTON SCANNER
 local function getCheapestTycoonButton(disasterFolder)
     local cheapestBtn = nil
     local lowestPrice = math.huge
@@ -174,10 +174,9 @@ task.spawn(function()
             if not root or not hum or hum.Health <= 0 then targetOverride = nil isHoldingRocket = false return end
             if player.Character ~= lastCharacter then lastCharacter = player.Character wanderTarget = nil end
 
-            -- УЛУЧШЕННОЕ ГЛОБАЛЬНОЕ ОПРЕДЕЛЕНИЕ ЛЮБОЙ ВОДЫ/FLOOD/TSUNAMI
+            -- УЛУЧШЕННОЕ ГЛОБАЛЬНОЕ ОПРЕДЕЛЕНИЕ ЛЮБОЙ ВОДЫ
             local waterDetected = false
             if disaster then
-                -- Ищем совпадения по именам Water, Flood, Liquid, Disaster1, Disaster17 в папке и подпапках
                 for _, v in ipairs(disaster:GetDescendants()) do
                     if v:IsA("BasePart") and (string.find(string.lower(v.Name), "water") or string.find(string.lower(v.Name), "flood") or string.find(string.lower(v.Name), "liquid") or v.Name == "Disaster1" or v.Name == "Disaster17") then
                         waterDetected = true
@@ -188,7 +187,6 @@ task.spawn(function()
 
             -- ОСТАЛЬНЫЕ КАТАСТРОФЫ
             local d2 = disaster and (disaster:FindFirstChild("Disaster2") or disaster:FindFirstChild("Hamster", true))
-            local d4 = disaster and disaster:FindFirstChild("Disaster4")
             local d6 = disaster and disaster:FindFirstChild("Disaster6")
             local d7 = disaster and disaster:FindFirstChild("Disaster7")
             local d12 = disaster and disaster:FindFirstChild("Disaster12")
@@ -207,7 +205,7 @@ task.spawn(function()
             local winButton = disaster and disaster:FindFirstChild("WinBUTTON", true)
             if disaster then tycoonBtn, tycoonPrice = getCheapestTycoonButton(disaster) end
 
-            -- ИЕРАРХИЯ ЛОГИКИ С ИСПРАВЛЕННЫМ FLOOD TP
+            -- ИЕРАРХИЯ ЛОГИКИ
             if d24 then
                 Status.Text = "EVENT 24: COLOR BLOCK SAFE"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(255, 0, 100)
@@ -226,7 +224,6 @@ task.spawn(function()
                 end
                 if (root.Position - platformPos).Magnitude > 4 then root.CFrame = CFrame.new(platformPos) else hum:MoveTo(root.Position) end
 
-            -- 100% ФИКС ТЕЛЕПОРТА ОТ НАВОДНЕНИЙ FLOOD И TSUNAMI
             elseif waterDetected then
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
                 Status.Text = "⚡ EMERGENCY TP: EVADING WATER/FLOOD"
@@ -237,15 +234,11 @@ task.spawn(function()
                 local bestSafePoint = root.Position
                 local maxElevation = -math.huge
 
-                -- Ищем самую надежную деталь в Disaster для спасения
                 for _, p in pairs(disaster:GetDescendants()) do
                     if p:IsA("BasePart") and p.CanCollide and p.Transparency < 0.9 then
                         local nameLower = string.lower(p.Name)
-                        -- Жестко игнорируем саму воду, жижу, триггеры и зоны спавна
                         if not string.find(nameLower, "water") and not string.find(nameLower, "flood") and not string.find(nameLower, "liquid") and not string.find(nameLower, "zone") then
-                            -- Фильтр устойчивости: деталь должна быть широкой (не столб и не тонкая балка)
                             if p.Size.X >= 4 and p.Size.Z >= 4 then
-                                -- Выбираем абсолютный максимум высоты на устойчивой поверхности
                                 if p.Position.Y > maxElevation then
                                     maxElevation = p.Position.Y
                                     bestSafePoint = p.Position
@@ -254,7 +247,6 @@ task.spawn(function()
                         end
                     end
                 end
-                -- Смещаемся ровно на центр крыши/платформы и прибавляем +4 блока для безопасности
                 root.CFrame = CFrame.new(bestSafePoint + Vector3.new(0, 4, 0))
 
             elseif activeMonster then
@@ -286,16 +278,6 @@ task.spawn(function()
                     local target = hamster:IsA("ClickDetector") and hamster.Parent or hamster
                     walkDirect(target.Position)
                     fireclickdetector(hamster:IsA("ClickDetector") and hamster or target:FindFirstChildOfClass("ClickDetector"))
-                end
-
-            elseif d4 then
-                if safePlatform then safePlatform:Destroy() safePlatform = nil end
-                Status.Text = "EVENT 4: DODGING BALLS"
-                GlowLine.BackgroundColor3 = Color3.fromRGB(255, 230, 0)
-                targetOverride = nil; isHoldingRocket = false
-                local dangerousBall = disaster:FindFirstChildOfClass("Part", true)
-                if dangerousBall and (dangerousBall.Position - root.Position).Magnitude < 15 and dangerousBall.Position.Y > root.Position.Y then
-                    root.CFrame = root.CFrame * CFrame.new(math.random(-10,10), 0, math.random(-10,10))
                 end
 
             elseif d6 then
