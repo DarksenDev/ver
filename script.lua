@@ -412,11 +412,22 @@ end
 
 local function floodEscape(root)
     local best, maxY = root.Position, -math.huge
+
+    -- Объекты-исключения верхнего уровня
+    local towerFolder    = workspace:FindFirstChild("Tower")
+    local diedPlaceObj   = workspace:FindFirstChild("DiedPlace")
+
     for _, p in ipairs(workspace:GetDescendants()) do
-        if p:IsA("BasePart") and p.CanCollide and p.Transparency < 0.85 and not p:IsDescendantOf(player.Character) then
+        if p:IsA("BasePart") and p.CanCollide and p.Transparency < 0.85
+           and not p:IsDescendantOf(player.Character) then
+
+            -- Исключаем Tower и DiedPlace
+            if towerFolder  and p:IsDescendantOf(towerFolder)  then continue end
+            if diedPlaceObj and p:IsDescendantOf(diedPlaceObj) then continue end
+
             local n = string.lower(p:GetFullName())
             if not string.find(n,"water") and not string.find(n,"flood")
-               and not string.find(n,"liquid") and not string.find(n,"diedplace")
+               and not string.find(n,"liquid")
                and p.Size.X >= 4 and p.Size.Z >= 4 then
                 if p.Position.Y > maxY then
                     maxY = p.Position.Y
@@ -724,16 +735,17 @@ task.spawn(function()
                     end
                 end
 
-            -- ── DISASTER 19: LASER ROOM ───────────────────────────
+            -- ── DISASTER 19: LASER ROOM ─ только уворот от Kill ──
             elseif d19 then
                 cleanupExtras()
-                setStatus("D19 LASER: PATHFIND TO END", 255, 0, 180)
-                local endPart = d19:FindFirstChild("End")
-                if endPart then
-                    if (root.Position - endPart.Position).Magnitude > 4 then
-                        local ok2 = walkPath(endPart.Position + Vector3.new(0, 3, 0))
-                        if not ok2 then noclipTP(endPart.Position + Vector3.new(0, 3, 0)) end
-                    end
+                setStatus("D19 LASER: DODGING ONLY", 255, 0, 180)
+                local killPart = getClosestKillPart(root, disaster)
+                if killPart then
+                    hum.Jump = true
+                    local dodge = Vector3.new(killPart.CFrame.LookVector.Z, 0, -killPart.CFrame.LookVector.X) * 14
+                    walkDirect(root.Position + dodge)
+                else
+                    hum:MoveTo(root.Position) -- стоим на месте
                 end
 
             -- ── DISASTER 22: CHRISTMAS PROMPTS ────────────────────
@@ -761,25 +773,30 @@ task.spawn(function()
                     end
                 end
 
-            -- ── DISASTER 18: TYCOON ───────────────────────────────
-            elseif d18 then
+            -- ── TYCOON BUTTON (любой раунд) ───────────────────────
+            elseif tycoonBtn then
                 cleanupExtras()
-                if tycoonBtn then
-                    setStatus("D18 TYCOON: BUYING ($" .. tycoonPrice .. ")", 0, 220, 255)
-                    if (root.Position - tycoonBtn.Position).Magnitude <= 4 then
-                        hum.Jump = true
-                        walkDirect(tycoonBtn.Position + Vector3.new(math.random(-1,1), 0, 0))
-                    else
-                        walkPath(tycoonBtn.Position)
-                    end
-                elseif winButton then
-                    setStatus("D18 TYCOON: WIN BUTTON!", 255, 0, 180)
-                    local wbTarget = winButton:FindFirstChild("Detect") or winButton:FindFirstChildWhichIsA("BasePart", true) or winButton
-                    if (root.Position - wbTarget.Position).Magnitude <= 4 then
-                        hum.Jump = true
-                    else
-                        walkPath(wbTarget.Position)
-                    end
+                setStatus("TYCOON: BUYING ($" .. tycoonPrice .. ")", 0, 230, 255)
+                local distanceToBtn = (root.Position - tycoonBtn.Position).Magnitude
+                if distanceToBtn <= 4 then
+                    hum.Jump = true
+                    local drift = (tick() % 1 > 0.5) and 1 or -1
+                    walkDirect(tycoonBtn.Position + Vector3.new(drift, 0, 0))
+                else
+                    walkPath(tycoonBtn.Position)
+                end
+
+            elseif winButton then
+                cleanupExtras()
+                setStatus("TYCOON FINISHED: WINBUTTON ACTIVE", 255, 0, 180)
+                local targetNode = winButton:FindFirstChild("Detect") or winButton:FindFirstChildWhichIsA("BasePart", true) or winButton
+                local distanceToWinBtn = (root.Position - targetNode.Position).Magnitude
+                if distanceToWinBtn <= 4 then
+                    hum.Jump = true
+                    local drift = (tick() % 1 > 0.5) and 1 or -1
+                    walkDirect(targetNode.Position + Vector3.new(drift, 0, 0))
+                else
+                    walkPath(targetNode.Position)
                 end
 
             -- ── ОРУЖИЕ ────────────────────────────────────────────
