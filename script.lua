@@ -100,6 +100,24 @@ local function getLocalWanderPos(root)
     return root.Position + Vector3.new(rx, 0, rz)
 end
 
+-- VIRTUAL MOUSE INTERCEPT
+local mouse = player:GetMouse()
+local targetOverride = nil
+local isHoldingRocket = false
+
+local mt = getrawmetatable(game)
+local oldIndex = mt.__index
+setreadonly(mt, false)
+
+mt.__index = newcclosure(function(self, key)
+    if self == mouse and isHoldingRocket and targetOverride and targetOverride.Parent then
+        if key == "Hit" then return targetOverride.CFrame
+        elseif key == "Target" then return targetOverride end
+    end
+    return oldIndex(self, key)
+end)
+setreadonly(mt, true)
+
 -- MAIN AI LOOP
 task.spawn(function()
     while _G.BotRunning do
@@ -110,7 +128,7 @@ task.spawn(function()
             local hum = char:FindFirstChildOfClass("Humanoid")
             local disaster = workspace:FindFirstChild("Disaster")
 
-            if not root or not hum or hum.Health <= 0 then return end
+            if not root or not hum or hum.Health <= 0 then targetOverride = nil isHoldingRocket = false return end
             if player.Character ~= lastCharacter then lastCharacter = player.Character wanderTarget = nil end
 
             -- КАТАСТРОФЫ И СОБЫТИЯ
@@ -136,6 +154,7 @@ task.spawn(function()
                 Status.Text = "EVENT 24: COLOR BLOCK SAFE"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(255, 0, 100)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(255, 0, 100)
+                targetOverride = nil; isHoldingRocket = false
                 local platformPos = Vector3.new(-135, 34.5, 78)
                 if not safePlatform or not safePlatform.Parent then
                     safePlatform = Instance.new("Part", workspace)
@@ -154,6 +173,7 @@ task.spawn(function()
                 Status.Text = "EVENT 1/17: WATER TP ESCAPE"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+                targetOverride = nil; isHoldingRocket = false
                 local bestSafePoint = root.Position
                 local maxElevation = -math.huge
                 for _, p in pairs(disaster:GetDescendants()) do
@@ -168,6 +188,7 @@ task.spawn(function()
                 Status.Text = "EVENT 5/20: FLEEING MONSTER"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(255, 0, 50)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(255, 0, 50)
+                targetOverride = nil; isHoldingRocket = false
                 local monster = d5 or d20
                 if monster and monster:FindFirstChild("HumanoidRootPart") then
                     if (root.Position - monster.HumanoidRootPart.Position).Magnitude < 25 then
@@ -176,8 +197,10 @@ task.spawn(function()
                 end
 
             elseif d2 then
+                if safePlatform then safePlatform:Destroy() safePlatform = nil end
                 Status.Text = "EVENT 2: SPAMMING HAMSTER"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(255, 150, 0)
+                targetOverride = nil; isHoldingRocket = false
                 local hamster = disaster:FindFirstChild("Hamster", true) or disaster:FindFirstChildOfClass("ClickDetector", true)
                 if hamster then
                     local target = hamster:IsA("ClickDetector") and hamster.Parent or hamster
@@ -186,22 +209,28 @@ task.spawn(function()
                 end
 
             elseif d4 then
-                Status.Text = "EVENT 4: DODGING FALLING BALLS"
+                if safePlatform then safePlatform:Destroy() safePlatform = nil end
+                Status.Text = "EVENT 4: DODGING BALLS"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(255, 230, 0)
+                targetOverride = nil; isHoldingRocket = false
                 local dangerousBall = disaster:FindFirstChildOfClass("Part", true)
                 if dangerousBall and (dangerousBall.Position - root.Position).Magnitude < 15 and dangerousBall.Position.Y > root.Position.Y then
                     root.CFrame = root.CFrame * CFrame.new(math.random(-10,10), 0, math.random(-10,10))
                 end
 
             elseif d6 then
+                if safePlatform then safePlatform:Destroy() safePlatform = nil end
                 Status.Text = "EVENT 6: NUKE SHELTERING"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+                targetOverride = nil; isHoldingRocket = false
                 local shelter = disaster:FindFirstChildWhichIsA("BasePart", true)
                 if shelter and shelter.Anchored then walkPath(shelter.Position) end
 
             elseif d7 then
+                if safePlatform then safePlatform:Destroy() safePlatform = nil end
                 Status.Text = "EVENT 7: EVADING MURDERER"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(100, 0, 100)
+                targetOverride = nil; isHoldingRocket = false
                 for _, p in pairs(game.Players:GetPlayers()) do
                     if p ~= player and p.Character and p.Character:FindFirstChild("Knife", true) then
                         if (root.Position - p.Character.HumanoidRootPart.Position).Magnitude < 40 then
@@ -210,11 +239,12 @@ task.spawn(function()
                     end
                 end
 
-            -- СБОР ПОДАРКОВ ЧЕРЕЗ PROXIMITY PROMPT ДЛЯ СУПЕР-ФАРМА С ЕЛКИ
             elseif d22 then
-                Status.Text = "EVENT 22: PROXIMITY COLLECTING"
+                if safePlatform then safePlatform:Destroy() safePlatform = nil end
+                Status.Text = "EVENT 22: CHRISTMAS PROMPTS"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(0, 255, 120)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(0, 255, 120)
+                targetOverride = nil; isHoldingRocket = false
                 local prompt = disaster:FindFirstChildOfClass("ProximityPrompt", true)
                 if prompt then
                     local parentPart = prompt.Parent
@@ -224,18 +254,11 @@ task.spawn(function()
                     end
                 end
 
-            elseif d12 then
-                Status.Text = "EVENT 12: UFO DODGING"
-                GlowLine.BackgroundColor3 = Color3.fromRGB(0, 255, 200)
-                for _, obj in pairs(disaster:GetDescendants()) do
-                    if obj:IsA("BasePart") and obj.Position.Y > root.Position.Y + 8 and obj.Size.X > 6 then
-                        walkDirect(obj.Position - Vector3.new(0, 8, 0)) break
-                    end
-                end
-
-            elseif d14_15 then
-                Status.Text = "EVENT 14/15: STORM SHELTER"
+            elseif d12 or d14_15 then
+                if safePlatform then safePlatform:Destroy() safePlatform = nil end
+                Status.Text = "EVENT 12/14/15: SHELTER"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(50, 50, 100)
+                targetOverride = nil; isHoldingRocket = false
                 for _, obj in pairs(disaster:GetDescendants()) do
                     if obj:IsA("BasePart") and obj.Position.Y > root.Position.Y + 8 and obj.Size.X > 6 then
                         walkDirect(obj.Position - Vector3.new(0, 8, 0)) break
@@ -243,8 +266,10 @@ task.spawn(function()
                 end
 
             elseif d19 then
+                if safePlatform then safePlatform:Destroy() safePlatform = nil end
                 Status.Text = "EVENT 19: DODGING LASERS"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(255, 0, 255)
+                targetOverride = nil; isHoldingRocket = false
                 local laser = disaster:FindFirstChild("Laser", true) or disaster:FindFirstChildWhichIsA("BasePart", true)
                 if laser and (laser.Position - root.Position).Magnitude < 8 then hum.Jump = true end
 
@@ -253,6 +278,8 @@ task.spawn(function()
                 Status.Text = "HUNTING ENEMIES WITH " .. weapon.Name:upper()
                 GlowLine.BackgroundColor3 = Color3.fromRGB(255, 120, 0)
                 if weapon.Parent == player.Backpack then hum:EquipTool(weapon) end
+                
+                isHoldingRocket = (weapon.Name == "RocketLauncher")
                 local target = nil local dist = 1000
                 for _, p in pairs(game.Players:GetPlayers()) do
                     if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character.Humanoid.Health > 0 then
@@ -261,22 +288,30 @@ task.spawn(function()
                     end
                 end
                 if target then
-                    if weapon.Name == "RocketLauncher" then
+                    targetOverride = target
+                    if isHoldingRocket then
                         if dist > 10 then walkPath(target.Position) else hum:MoveTo(root.Position) end
                         workspace.CurrentCamera.CFrame = CFrame.new(workspace.CurrentCamera.CFrame.Position, target.Position)
-                    else walkDirect(target.Position) end
+                    else 
+                        targetOverride = nil
+                        walkDirect(target.Position) 
+                    end
                     root.CFrame = CFrame.new(root.Position, Vector3.new(target.Position.X, root.Position.Y, target.Position.Z))
                     weapon:Activate()
+                else
+                    targetOverride = nil; isHoldingRocket = false
                 end
 
             elseif win then
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
+                targetOverride = nil; isHoldingRocket = false
                 Status.Text = "PATHFINDING TO WIN PART"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(180, 50, 255)
                 walkPath(win.Position)
 
             elseif CLICKButton then
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
+                targetOverride = nil; isHoldingRocket = false
                 Status.Text = "MOVING TO START BUTTON"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
                 local pos = CLICKButton:IsA("BasePart") and CLICKButton.Position or CLICKButton.Parent.Position
@@ -284,6 +319,7 @@ task.spawn(function()
                 if (root.Position - pos).Magnitude < 10 then fireclickdetector(CLICKButton:FindFirstChildOfClass("ClickDetector") or CLICKButton) end
             else
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
+                targetOverride = nil; isHoldingRocket = false
                 Status.Text = "LOCAL ROAMING (SAFE IDLE)"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(0, 255, 140)
                 if not wanderTarget or (root.Position - wanderTarget).Magnitude < 4 then wanderTarget = getLocalWanderPos(root) end
