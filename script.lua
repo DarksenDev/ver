@@ -61,23 +61,22 @@ game:GetService("GuiService").ErrorMessageChanged:Connect(function()
     task.wait(5) game:GetService("TeleportService"):Teleport(game.PlaceId, player)
 end)
 
--- УМНЫЙ PATHFINDING ДЛЯ ОБХОДА СТЕН (Win, Tycoon, WinBUTTON)
+-- НАВИГАЦИЯ
 local function walkPath(targetPos)
     local char = player.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not hum or not root then return end
 
-    -- AgentRadius = 3.5 заставляет бота обходить углы шире, чтобы не цепляться за текстуры
-    local path = Pathfinding:CreatePath({AgentRadius = 3.5, AgentCanJump = true, WaypointSpacing = 4}) [1, 2]
-    local success, _ = pcall(function() path:ComputeAsync(root.Position, targetPos) end) [2]
+    local path = Pathfinding:CreatePath({AgentRadius = 3.5, AgentCanJump = true, WaypointSpacing = 4})
+    local success, _ = pcall(function() path:ComputeAsync(root.Position, targetPos) end)
     
-    if success and path.Status == Enum.PathStatus.Success then [2]
-        local wps = path:GetWaypoints() [2]
+    if success and path.Status == Enum.PathStatus.Success then
+        local wps = path:GetWaypoints()
         for i = 1, math.min(#wps, 4) do
             if not _G.BotRunning or hum.Health <= 0 then break end
-            hum:MoveTo(wps[i].Position) [2]
-            if wps[i].Action == Enum.PathWaypointAction.Jump then hum.Jump = true end [2]
+            hum:MoveTo(wps[i].Position)
+            if wps[i].Action == Enum.PathWaypointAction.Jump then hum.Jump = true end
             
             local arrived = hum.MoveToFinished:Wait(0.2)
             if not arrived and root.AssemblyLinearVelocity.Magnitude < 2.5 then 
@@ -87,13 +86,11 @@ local function walkPath(targetPos)
             end
         end
     else
-        -- Если путь заблокирован намертво, идём напрямую с прыжками (Резервный вариант)
         hum:MoveTo(targetPos)
         if root.AssemblyLinearVelocity.Magnitude < 2.5 then hum.Jump = true wanderTarget = nil end
     end
 end
 
--- ОБЫЧНЫЙ ПРЯМОЙ ХОД (Для лобби и открытых пространств)
 local function walkDirect(targetPos)
     local char = player.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -103,6 +100,45 @@ local function walkDirect(targetPos)
     if root.AssemblyLinearVelocity.Magnitude < 2.5 then hum.Jump = true wanderTarget = nil end
 end
 
+-- НОВАЯ ФУНКЦИЯ НОКЛИП-ПЕРЕМЕЩЕНИЯ К УКРЫТИЮ (проходит сквозь стены)
+local function forceToShelter(targetPos)
+    local char = player.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not hum or not root then return end
+
+    -- Собираем все части с CanCollide и отключаем их (ноклип)
+    local collidableParts = {}
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") and part.CanCollide then
+            table.insert(collidableParts, part)
+            part.CanCollide = false
+        end
+    end
+
+    local start = tick()
+    local maxTime = 5 -- максимум 5 секунд ноклипа
+    while (root.Position - targetPos).Magnitude > 2 and tick() - start < maxTime and _G.BotRunning do
+        local direction = (targetPos - root.Position).Unit
+        local step = math.min(3, (root.Position - targetPos).Magnitude)
+        local newPos = root.Position + direction * step
+        
+        -- Удерживаем высоту: рейкаст вниз и подъём на 3 стада над найденной поверхностью
+        local ray = Ray.new(newPos + Vector3.new(0, 10, 0), Vector3.new(0, -20, 0))
+        local hitPart, hitPos = workspace:FindPartOnRay(ray, char)
+        if hitPart then
+            newPos = Vector3.new(newPos.X, hitPos.Y + 3, newPos.Z)
+        end
+        root.CFrame = CFrame.new(newPos)
+        task.wait(0.1)
+    end
+
+    -- Восстанавливаем коллизии
+    for _, part in ipairs(collidableParts) do
+        pcall(function() part.CanCollide = true end)
+    end
+end
+
 local function getLocalWanderPos(root)
     local rx = math.random(-14, 14) local rz = math.random(-14, 14)
     if math.abs(rx) < 6 then rx = rx > 0 and 6 or -6 end
@@ -110,7 +146,7 @@ local function getLocalWanderPos(root)
     return root.Position + Vector3.new(rx, 0, rz)
 end
 
--- ПОИСК БЛИЖАЙШЕГО ЗОМБИ ИЛИ СНЕГОВИКА
+-- ПОИСК МОНСТРОВ
 local function getClosestMonster(root, disasterFolder)
     local closest = nil
     local minDist = 25
@@ -129,7 +165,7 @@ local function getClosestMonster(root, disasterFolder)
     return closest
 end
 
--- ПОИСК ОПАСНЫХ ЛАЗЕРОВ
+-- ПОИСК ЛАЗЕРОВ
 local function getClosestLaser(root, disasterFolder)
     if not disasterFolder then return nil end
     for _, obj in ipairs(disasterFolder:GetDescendants()) do
@@ -308,11 +344,13 @@ task.spawn(function()
 
             elseif d6 then
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
-                Status.Text = "EVENT 6: NUKE SHELTERING"
+                Status.Text = "EVENT 6: NUKE SHELTERING (NOCLIP)"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
                 targetOverride = nil; isHoldingRocket = false
                 local shelter = disaster:FindFirstChildWhichIsA("BasePart", true)
-                if shelter and shelter.Anchored then walkPath(shelter.Position) end
+                if shelter and shelter.Anchored then
+                    forceToShelter(shelter.Position)   -- НОКЛИП ВКЛЮЧЁН
+                end
 
             elseif d7 then
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
@@ -344,12 +382,13 @@ task.spawn(function()
 
             elseif d12 or d14_15 then
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
-                Status.Text = "EVENT 12/14/15: SHELTER"
+                Status.Text = "EVENT 12/14/15: SHELTER (NOCLIP)"
                 GlowLine.BackgroundColor3 = Color3.fromRGB(50, 50, 100)
                 targetOverride = nil; isHoldingRocket = false
                 for _, obj in pairs(disaster:GetDescendants()) do
                     if obj:IsA("BasePart") and obj.Position.Y > root.Position.Y + 8 and obj.Size.X > 6 then
-                        walkDirect(obj.Position - Vector3.new(0, 8, 0)) break
+                        forceToShelter(obj.Position - Vector3.new(0, 8, 0))   -- НОКЛИП
+                        break
                     end
                 end
 
@@ -425,14 +464,13 @@ task.spawn(function()
                 walkDirect(tableBtn.Parent.Position)
                 if (root.Position - tableBtn.Parent.Position).Magnitude < 10 then fireclickdetector(tableBtn) end
 
-            -- ВЕРНУЛ УМНЫЙ PATHFINDING ДЛЯ WIN PART
             elseif win then
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
                 targetOverride = nil; isHoldingRocket = false
                 Status.Text = "PATHFINDING TO WIN PART..."
                 GlowLine.BackgroundColor3 = Color3.fromRGB(180, 50, 255)
                 PulseDot.BackgroundColor3 = Color3.fromRGB(180, 50, 255)
-                walkPath(win.Position) -- Теперь он огибает любые лабиринты и стены
+                walkPath(win.Position)
 
             elseif CLICKButton then
                 if safePlatform then safePlatform:Destroy() safePlatform = nil end
