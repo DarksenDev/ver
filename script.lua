@@ -704,6 +704,7 @@ end
 local mouse          = player:GetMouse()
 local targetOverride = nil
 local isHoldingRocket = false
+local d9WinReached   = false  -- D9: флаг "уже дошли до Win, не летим снова"
 
 local ok, mt = pcall(getrawmetatable, game)
 if ok and mt then
@@ -745,12 +746,14 @@ task.spawn(function()
             if char ~= lastCharacter then
                 lastCharacter = char
                 wanderTarget  = nil
+                d9WinReached  = false
                 cleanupExtras()
             end
 
             local disaster = workspace:FindFirstChild("Disaster")
 
-            -- Детектируем конкретные катастрофы
+            -- сбрасываем флаг maze если раунд кончился
+            if not d9 then d9WinReached = false end
             local d3  = disaster and disaster:FindFirstChild("Disaster3")
             local d4  = disaster and disaster:FindFirstChild("Disaster4")
             local d6  = disaster and disaster:FindFirstChild("Disaster6")
@@ -837,21 +840,33 @@ task.spawn(function()
             -- ── DISASTER 9: MAZE ─ pathfind + noclip fallback ───
             elseif d9 then
                 cleanupExtras()
-                setStatus("D9 MAZE: PATHFINDING TO WIN", 80, 0, 200)
-                if winPart then
+                -- Если уже дошли до Win в этом раунде — просто стоим
+                if d9WinReached then
+                    setStatus("D9 MAZE: WIN REACHED!", 0, 255, 140)
+                    hum:MoveTo(root.Position)
+                elseif winPart then
                     local dist = (root.Position - winPart.Position).Magnitude
-                    if dist > 4 then
-                        -- Пробуем pathfinding с умным стак-детектом
-                        local pfResult = walkPath(winPart.Position + Vector3.new(0, 2, 0), 20)
-                        -- Если после попытки всё ещё далеко — noclip
-                        task.wait(0.5)
-                        local _, root2 = getChar()
-                        if root2 and (root2.Position - winPart.Position).Magnitude > 8 then
-                            setStatus("D9 MAZE: NOCLIP FALLBACK!", 160, 0, 255)
-                            noclipTP(winPart.Position + Vector3.new(0, 2, 0))
-                        end
+                    if dist <= 5 then
+                        -- Достигли — ставим флаг и стоим
+                        d9WinReached = true
+                        setStatus("D9 MAZE: WIN REACHED!", 0, 255, 140)
+                        hum:MoveTo(root.Position)
                     else
-                        hum:MoveTo(root.Position) -- на месте победы
+                        setStatus("D9 MAZE: PATHFINDING TO WIN", 80, 0, 200)
+                        local pfResult = walkPath(winPart.Position + Vector3.new(0, 2, 0), 20)
+                        -- Проверяем после pathfinding — если застряли, noclip
+                        task.wait(0.3)
+                        local _, root2 = getChar()
+                        if root2 then
+                            local newDist = (root2.Position - winPart.Position).Magnitude
+                            if newDist <= 5 then
+                                d9WinReached = true
+                            elseif newDist > 8 then
+                                setStatus("D9 MAZE: NOCLIP FALLBACK!", 160, 0, 255)
+                                noclipTP(winPart.Position + Vector3.new(0, 2, 0))
+                                d9WinReached = true
+                            end
+                        end
                     end
                 end
 
@@ -913,7 +928,18 @@ task.spawn(function()
             elseif d11 then
                 cleanupExtras()
                 setStatus("D11 BUTTON: SPAM CLICKING!", 255, 255, 0)
-                local btn = d11:FindFirstChildOfClass("ClickDetector", true)
+                -- Ищем по имени TableNButtonClickDetector (N = любая цифра)
+                local btn = nil
+                for _, obj in ipairs(d11:GetDescendants()) do
+                    if obj:IsA("ClickDetector") and string.find(obj.Name, "TableNButtonClickDetector") then
+                        btn = obj
+                        break
+                    end
+                end
+                -- fallback: любой ClickDetector в d11
+                if not btn then
+                    btn = d11:FindFirstChildOfClass("ClickDetector", true)
+                end
                 if btn then
                     local btnPart = btn.Parent
                     if (root.Position - btnPart.Position).Magnitude > 8 then
