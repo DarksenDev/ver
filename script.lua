@@ -168,7 +168,7 @@ local function getClosestLaser(root, disasterFolder)
     for _, obj in ipairs(disasterFolder:GetDescendants()) do
         if obj:IsA("BasePart") and obj.Name == "Kill" then
             local d = (root.Position - obj.Position).Magnitude
-            if d < 12 then return obj end
+            if d < 15 then return obj end
         end
     end
     return nil
