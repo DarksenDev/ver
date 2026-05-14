@@ -25,56 +25,290 @@ local standPart        = nil   -- D10: платформа под ботом
 local d10Initialized   = false -- D10: флаг первого запуска умной логики
 
 -- ============================================================
+-- НАСТРОЙКИ (можно менять)
+-- ============================================================
+local Settings = {
+    AutoWin         = true,   -- идти к Win part
+    AutoClick       = true,   -- нажимать кнопку старта
+    AntiMonster     = true,   -- убегать от монстров
+    AntiFlood       = true,   -- тп при флуде
+    AutoTycoon      = true,   -- покупать кнопки тайкуна
+    ShowShield      = true,   -- показывать щит D4 (false = невидимый)
+}
+
+-- ============================================================
 -- GUI
 -- ============================================================
-local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
-ScreenGui.Name = "PremiumSurvivorAI"
-ScreenGui.ResetOnSpawn = false
+local TweenService = game:GetService("TweenService")
 
+local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
+ScreenGui.Name        = "PremiumSurvivorAI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+-- ГЛАВНОЕ ОКНО
 local Main = Instance.new("Frame", ScreenGui)
-Main.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+Main.BackgroundColor3 = Color3.fromRGB(10, 10, 16)
 Main.BorderSizePixel  = 0
-Main.Size             = UDim2.new(0, 290, 0, 105)
-Main.Position         = UDim2.new(0.5, -145, 0.05, 0)
+Main.Size             = UDim2.new(0, 300, 0, 46)
+Main.Position         = UDim2.new(0.5, -150, 0.04, 0)
 Main.Active           = true
 Main.Draggable        = true
-Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 12)
+Main.ClipsDescendants = true
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 14)
 
-local GlowLine = Instance.new("Frame", Main)
-GlowLine.Size            = UDim2.new(1, 0, 0, 3)
-GlowLine.BorderSizePixel = 0
-GlowLine.BackgroundColor3 = Color3.fromRGB(0, 180, 255)
-Instance.new("UICorner", GlowLine).CornerRadius = UDim.new(0, 3)
+-- тень через UIStroke
+local stroke = Instance.new("UIStroke", Main)
+stroke.Color       = Color3.fromRGB(0, 170, 255)
+stroke.Thickness   = 1.2
+stroke.Transparency = 0.5
 
-local InnerFrame = Instance.new("Frame", Main)
-InnerFrame.Size              = UDim2.new(1, -20, 1, -25)
-InnerFrame.Position          = UDim2.new(0, 10, 0, 15)
-InnerFrame.BackgroundColor3  = Color3.fromRGB(22, 22, 28)
-Instance.new("UICorner", InnerFrame).CornerRadius = UDim.new(0, 8)
+-- ШАПКА
+local Header = Instance.new("Frame", Main)
+Header.Size             = UDim2.new(1, 0, 0, 46)
+Header.BackgroundColor3 = Color3.fromRGB(13, 13, 20)
+Header.BorderSizePixel  = 0
 
-local PulseDot = Instance.new("Frame", InnerFrame)
-PulseDot.Size             = UDim2.new(0, 8, 0, 8)
-PulseDot.Position         = UDim2.new(0, 12, 0.5, -4)
+local HeaderGrad = Instance.new("UIGradient", Header)
+HeaderGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(18, 18, 30)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(10, 10, 16)),
+})
+HeaderGrad.Rotation = 90
+
+-- цветная полоска сверху
+local TopBar = Instance.new("Frame", Main)
+TopBar.Size             = UDim2.new(1, 0, 0, 2)
+TopBar.BackgroundColor3 = Color3.fromRGB(0, 180, 255)
+TopBar.BorderSizePixel  = 0
+local TopBarGrad = Instance.new("UIGradient", TopBar)
+TopBarGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0,   Color3.fromRGB(0, 120, 255)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(0, 255, 200)),
+    ColorSequenceKeypoint.new(1,   Color3.fromRGB(120, 0, 255)),
+})
+
+-- пульс-точка
+local PulseDot = Instance.new("Frame", Header)
+PulseDot.Size             = UDim2.new(0, 9, 0, 9)
+PulseDot.Position         = UDim2.new(0, 14, 0.5, -4)
 PulseDot.BackgroundColor3 = Color3.fromRGB(0, 255, 140)
+PulseDot.BorderSizePixel  = 0
 Instance.new("UICorner", PulseDot).CornerRadius = UDim.new(1, 0)
 
-local Status = Instance.new("TextLabel", InnerFrame)
-Status.Size               = UDim2.new(1, -40, 1, 0)
-Status.Position           = UDim2.new(0, 28, 0, 0)
-Status.BackgroundTransparency = 1
-Status.Text               = "INITIALIZING..."
-Status.TextColor3         = Color3.fromRGB(245, 245, 245)
-Status.TextSize           = 12
-Status.Font               = Enum.Font.GothamBold
-Status.TextXAlignment     = Enum.TextXAlignment.Left
-Status.TextWrapped        = true
+-- анимация пульса
+task.spawn(function()
+    while true do
+        TweenService:Create(PulseDot, TweenInfo.new(0.6, Enum.EasingStyle.Sine), {BackgroundTransparency = 0.7}):Play()
+        task.wait(0.6)
+        TweenService:Create(PulseDot, TweenInfo.new(0.6, Enum.EasingStyle.Sine), {BackgroundTransparency = 0}):Play()
+        task.wait(0.6)
+    end
+end)
 
-local function setStatus(text, r, g, b)
-    Status.Text = text
-    local col = Color3.fromRGB(r, g, b)
-    GlowLine.BackgroundColor3 = col
-    PulseDot.BackgroundColor3 = col
+-- заголовок
+local TitleLabel = Instance.new("TextLabel", Header)
+TitleLabel.Size               = UDim2.new(0, 120, 1, 0)
+TitleLabel.Position           = UDim2.new(0, 30, 0, 0)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text               = "SURVIVOR AI"
+TitleLabel.TextColor3         = Color3.fromRGB(255, 255, 255)
+TitleLabel.TextSize           = 13
+TitleLabel.Font               = Enum.Font.GothamBold
+TitleLabel.TextXAlignment     = Enum.TextXAlignment.Left
+
+-- версия
+local VerLabel = Instance.new("TextLabel", Header)
+VerLabel.Size               = UDim2.new(0, 40, 1, 0)
+VerLabel.Position           = UDim2.new(0, 148, 0, 0)
+VerLabel.BackgroundTransparency = 1
+VerLabel.Text               = "v2.0"
+VerLabel.TextColor3         = Color3.fromRGB(0, 200, 255)
+VerLabel.TextSize           = 10
+VerLabel.Font               = Enum.Font.Gotham
+VerLabel.TextXAlignment     = Enum.TextXAlignment.Left
+
+-- статус
+local Status = Instance.new("TextLabel", Header)
+Status.Size               = UDim2.new(1, -200, 1, 0)
+Status.Position           = UDim2.new(0, 195, 0, 0)
+Status.BackgroundTransparency = 1
+Status.Text               = "INIT..."
+Status.TextColor3         = Color3.fromRGB(0, 255, 140)
+Status.TextSize           = 10
+Status.Font               = Enum.Font.GothamBold
+Status.TextXAlignment     = Enum.TextXAlignment.Right
+Status.TextTruncate       = Enum.TextTruncate.AtEnd
+
+-- кнопки справа в шапке: [⚙] [−]
+local BtnSettings = Instance.new("TextButton", Header)
+BtnSettings.Size               = UDim2.new(0, 24, 0, 24)
+BtnSettings.Position           = UDim2.new(1, -52, 0.5, -12)
+BtnSettings.BackgroundColor3   = Color3.fromRGB(25, 25, 38)
+BtnSettings.BorderSizePixel    = 0
+BtnSettings.Text               = "⚙"
+BtnSettings.TextColor3         = Color3.fromRGB(180, 180, 220)
+BtnSettings.TextSize           = 14
+BtnSettings.Font               = Enum.Font.GothamBold
+Instance.new("UICorner", BtnSettings).CornerRadius = UDim.new(0, 6)
+
+local BtnMinimize = Instance.new("TextButton", Header)
+BtnMinimize.Size               = UDim2.new(0, 24, 0, 24)
+BtnMinimize.Position           = UDim2.new(1, -24, 0.5, -12)
+BtnMinimize.BackgroundColor3   = Color3.fromRGB(25, 25, 38)
+BtnMinimize.BorderSizePixel    = 0
+BtnMinimize.Text               = "−"
+BtnMinimize.TextColor3         = Color3.fromRGB(180, 180, 220)
+BtnMinimize.TextSize           = 16
+BtnMinimize.Font               = Enum.Font.GothamBold
+Instance.new("UICorner", BtnMinimize).CornerRadius = UDim.new(0, 6)
+
+-- ПАНЕЛЬ НАСТРОЕК (скрыта по умолчанию)
+local SettingsPanel = Instance.new("Frame", Main)
+SettingsPanel.Size             = UDim2.new(1, 0, 0, 220)
+SettingsPanel.Position         = UDim2.new(0, 0, 0, 46)
+SettingsPanel.BackgroundColor3 = Color3.fromRGB(13, 13, 20)
+SettingsPanel.BorderSizePixel  = 0
+SettingsPanel.Visible          = false
+
+local SepLine = Instance.new("Frame", SettingsPanel)
+SepLine.Size             = UDim2.new(1, -20, 0, 1)
+SepLine.Position         = UDim2.new(0, 10, 0, 0)
+SepLine.BackgroundColor3 = Color3.fromRGB(30, 30, 50)
+SepLine.BorderSizePixel  = 0
+
+local SettingsTitle = Instance.new("TextLabel", SettingsPanel)
+SettingsTitle.Size               = UDim2.new(1, 0, 0, 28)
+SettingsTitle.Position           = UDim2.new(0, 0, 0, 6)
+SettingsTitle.BackgroundTransparency = 1
+SettingsTitle.Text               = "⚙  НАСТРОЙКИ"
+SettingsTitle.TextColor3         = Color3.fromRGB(0, 200, 255)
+SettingsTitle.TextSize           = 11
+SettingsTitle.Font               = Enum.Font.GothamBold
+
+-- Функция создания тогл-строки
+local function makeToggle(parent, yPos, label, settingKey)
+    local row = Instance.new("Frame", parent)
+    row.Size             = UDim2.new(1, -20, 0, 28)
+    row.Position         = UDim2.new(0, 10, 0, yPos)
+    row.BackgroundColor3 = Color3.fromRGB(18, 18, 28)
+    row.BorderSizePixel  = 0
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 7)
+
+    local lbl = Instance.new("TextLabel", row)
+    lbl.Size               = UDim2.new(1, -60, 1, 0)
+    lbl.Position           = UDim2.new(0, 10, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text               = label
+    lbl.TextColor3         = Color3.fromRGB(200, 200, 220)
+    lbl.TextSize           = 11
+    lbl.Font               = Enum.Font.Gotham
+    lbl.TextXAlignment     = Enum.TextXAlignment.Left
+
+    -- переключатель
+    local toggleBg = Instance.new("Frame", row)
+    toggleBg.Size             = UDim2.new(0, 38, 0, 18)
+    toggleBg.Position         = UDim2.new(1, -46, 0.5, -9)
+    toggleBg.BackgroundColor3 = Settings[settingKey] and Color3.fromRGB(0, 200, 100) or Color3.fromRGB(60, 60, 80)
+    toggleBg.BorderSizePixel  = 0
+    Instance.new("UICorner", toggleBg).CornerRadius = UDim.new(1, 0)
+
+    local knob = Instance.new("Frame", toggleBg)
+    knob.Size             = UDim2.new(0, 14, 0, 14)
+    knob.Position         = Settings[settingKey] and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)
+    knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    knob.BorderSizePixel  = 0
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+
+    -- клик по всей строке
+    local btn = Instance.new("TextButton", row)
+    btn.Size               = UDim2.new(1, 0, 1, 0)
+    btn.BackgroundTransparency = 1
+    btn.Text               = ""
+    btn.ZIndex             = 5
+
+    btn.MouseButton1Click:Connect(function()
+        Settings[settingKey] = not Settings[settingKey]
+        local on = Settings[settingKey]
+        TweenService:Create(toggleBg, TweenInfo.new(0.2), {
+            BackgroundColor3 = on and Color3.fromRGB(0, 200, 100) or Color3.fromRGB(60, 60, 80)
+        }):Play()
+        TweenService:Create(knob, TweenInfo.new(0.2), {
+            Position = on and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)
+        }):Play()
+    end)
+
+    return row
 end
+
+-- Создаём все тоглы
+makeToggle(SettingsPanel, 34,  "🏆  Auto Win",          "AutoWin")
+makeToggle(SettingsPanel, 68,  "🖱️  Auto Click Button",  "AutoClick")
+makeToggle(SettingsPanel, 102, "👾  Anti Monster",       "AntiMonster")
+makeToggle(SettingsPanel, 136, "🌊  Anti Flood",         "AntiFlood")
+makeToggle(SettingsPanel, 170, "💰  Auto Tycoon",        "AutoTycoon")
+
+-- ЛОГИКА КНОПОК
+local settingsOpen = false
+local minimized    = false
+
+BtnSettings.MouseButton1Click:Connect(function()
+    settingsOpen = not settingsOpen
+    if minimized then return end
+    SettingsPanel.Visible = settingsOpen
+    local targetH = settingsOpen and (46 + 220) or 46
+    TweenService:Create(Main, TweenInfo.new(0.25, Enum.EasingStyle.Quart), {
+        Size = UDim2.new(0, 300, 0, targetH)
+    }):Play()
+    BtnSettings.TextColor3 = settingsOpen
+        and Color3.fromRGB(0, 200, 255)
+        or  Color3.fromRGB(180, 180, 220)
+end)
+
+BtnMinimize.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    if minimized then
+        SettingsPanel.Visible = false
+        TweenService:Create(Main, TweenInfo.new(0.25, Enum.EasingStyle.Quart), {
+            Size = UDim2.new(0, 300, 0, 46)
+        }):Play()
+        BtnMinimize.Text = "+"
+    else
+        BtnMinimize.Text = "−"
+        if settingsOpen then
+            SettingsPanel.Visible = true
+            TweenService:Create(Main, TweenInfo.new(0.25, Enum.EasingStyle.Quart), {
+                Size = UDim2.new(0, 300, 0, 46 + 220)
+            }):Play()
+        end
+    end
+end)
+
+-- Ховер-эффекты кнопок
+for _, btn in ipairs({BtnSettings, BtnMinimize}) do
+    btn.MouseEnter:Connect(function()
+        TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(35, 35, 55)}):Play()
+    end)
+    btn.MouseLeave:Connect(function()
+        TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(25, 25, 38)}):Play()
+    end)
+end
+
+-- setStatus обновляет текст + цвет точки + TopBar градиент
+local function setStatus(text, r, g, b)
+    Status.Text      = text
+    local col        = Color3.fromRGB(r, g, b)
+    PulseDot.BackgroundColor3 = col
+    stroke.Color     = col
+    TopBarGrad.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0,   Color3.fromRGB(r//2, g//2, b//2)),
+        ColorSequenceKeypoint.new(0.5, col),
+        ColorSequenceKeypoint.new(1,   Color3.fromRGB(r//3, g//3, b//3)),
+    })
+end
+
+-- Совместимость: GlowLine (используется в коде ниже через setStatus)
+local GlowLine = TopBar  -- алиас чтобы не ломать старые вызовы
 
 -- ============================================================
 -- ANTI-AFK
@@ -228,8 +462,7 @@ local function ensureShield(root)
         shieldPart.Size         = Vector3.new(10, 1, 10)
         shieldPart.Anchored     = true
         shieldPart.CanCollide   = true
-        shieldPart.Material     = Enum.Material.SmoothPlastic
-        shieldPart.Transparency = 0.4
+        shieldPart.Transparency = Settings.ShowShield and 0.4 or 1
         shieldPart.Color        = Color3.fromRGB(0, 200, 255)
         shieldPart.CastShadow   = false
         Instance.new("UICorner") -- просто маркер
@@ -533,16 +766,17 @@ task.spawn(function()
             local d22 = disaster and disaster:FindFirstChild("Disaster22")
             local d24 = disaster and disaster:FindFirstChild("Disaster24")
 
-            local activeMonster   = getClosestMonster(root, disaster)
+            local activeMonster   = Settings.AntiMonster and getClosestMonster(root, disaster) or nil
             local dangerousKill   = getClosestKillPart(root, disaster)
-            local floodActive     = isFloodActive(disaster)
+            local floodActive     = Settings.AntiFlood and isFloodActive(disaster) or false
 
-            local winPart    = disaster and disaster:FindFirstChild("Win", true)
-            local CLICKButton= workspace:FindFirstChild("CLICKButton", true)
-            local weapon     = char:FindFirstChild("ClassicSword") or player.Backpack:FindFirstChild("ClassicSword")
-                            or char:FindFirstChild("RocketLauncher") or player.Backpack:FindFirstChild("RocketLauncher")
-            local tycoonBtn, tycoonPrice = getCheapestTycoonButton(disaster)
-            local winButton  = disaster and disaster:FindFirstChild("WinBUTTON", true)
+            local winPart     = Settings.AutoWin and disaster and disaster:FindFirstChild("Win", true) or nil
+            local CLICKButton = Settings.AutoClick and workspace:FindFirstChild("CLICKButton", true) or nil
+            local weapon      = char:FindFirstChild("ClassicSword") or player.Backpack:FindFirstChild("ClassicSword")
+                             or char:FindFirstChild("RocketLauncher") or player.Backpack:FindFirstChild("RocketLauncher")
+            local tycoonBtn, tycoonPrice = nil, 0
+            if Settings.AutoTycoon then tycoonBtn, tycoonPrice = getCheapestTycoonButton(disaster) end
+            local winButton = Settings.AutoTycoon and disaster and disaster:FindFirstChild("WinBUTTON", true) or nil
 
             -- ====================================================
             -- ИЕРАРХИЯ ПРИОРИТЕТОВ
