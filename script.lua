@@ -7,7 +7,6 @@ for _, old in pairs(workspace:GetChildren()) do
 end
 
 _G.BotRunning = true
-_G.BotRunning = true
 _G.d6ReturnPos = nil  -- Сброс позиции возврата для D6
 local player = game.Players.LocalPlayer
 local Pathfinding = game:GetService("PathfindingService")
