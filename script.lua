@@ -1,63 +1,72 @@
--- CLEANUP PREVIOUS SESSIONS
+-- ============================================================
+-- DON'T PRESS THE BUTTON X — BOT v2.0
+-- Fixes: D3 noclip TP, D4 shield platform, D6 safeZone rush,
+--        D9 pathfind+fallback TP, D10 smart platform survival
+-- ============================================================
+
+-- CLEANUP
 for _, old in pairs(game.CoreGui:GetChildren()) do
-    if old.Name == "PremiumSurvivorAI" or old.Name == "SurvivorHub" then old:Destroy() end
+    if old.Name == "PremiumSurvivorAI" then old:Destroy() end
 end
 for _, old in pairs(workspace:GetChildren()) do
-    if old.Name == "Disaster24_SafePlatform" or old.Name == "_BotShield" or old.Name == "_BotStandPlatform" then old:Destroy() end
+    if old.Name == "_BotShield" or old.Name == "_BotStandPlatform" then old:Destroy() end
 end
 
 _G.BotRunning = true
-_G.d6ReturnPos = nil  -- Сброс позиции возврата для D6
-local player = game.Players.LocalPlayer
-local Pathfinding = game:GetService("PathfindingService")
-local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
+_G.d6ReturnPos = nil
+_G.d6TpCount = 0
 
-local wanderTarget = nil
-local lastCharacter = nil
-local shieldPart = nil
-local standPart = nil
-local d10Initialized = false
+local player       = game.Players.LocalPlayer
+local Pathfinding  = game:GetService("PathfindingService")
+local RunService   = game:GetService("RunService")
+
+local wanderTarget     = nil
+local lastCharacter    = nil
+local shieldPart       = nil
+local standPart        = nil
+local d10Initialized   = false
 
 -- ============================================================
 -- НАСТРОЙКИ
 -- ============================================================
 local Settings = {
-    AutoWin = true,
-    AutoClick = true,
-    AntiMonster = true,
-    AntiFlood = true,
-    AutoTycoon = true,
-    ShowShield = true,
+    AutoWin         = true,
+    AutoClick       = true,
+    AntiMonster     = true,
+    AntiFlood       = true,
+    AutoTycoon      = true,
+    ShowShield      = true,
 }
 
 -- ============================================================
 -- GUI
 -- ============================================================
+local TweenService = game:GetService("TweenService")
+
 local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
-ScreenGui.Name = "PremiumSurvivorAI"
+ScreenGui.Name        = "PremiumSurvivorAI"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
 local Main = Instance.new("Frame", ScreenGui)
 Main.BackgroundColor3 = Color3.fromRGB(10, 10, 16)
-Main.BorderSizePixel = 0
-Main.Size = UDim2.new(0, 300, 0, 46)
-Main.Position = UDim2.new(0.5, -150, 0.04, 0)
-Main.Active = true
-Main.Draggable = true
+Main.BorderSizePixel  = 0
+Main.Size             = UDim2.new(0, 300, 0, 46)
+Main.Position         = UDim2.new(0.5, -150, 0.04, 0)
+Main.Active           = true
+Main.Draggable        = true
 Main.ClipsDescendants = true
 Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 14)
 
 local stroke = Instance.new("UIStroke", Main)
-stroke.Color = Color3.fromRGB(0, 170, 255)
-stroke.Thickness = 1.2
+stroke.Color       = Color3.fromRGB(0, 170, 255)
+stroke.Thickness   = 1.2
 stroke.Transparency = 0.5
 
 local Header = Instance.new("Frame", Main)
-Header.Size = UDim2.new(1, 0, 0, 46)
+Header.Size             = UDim2.new(1, 0, 0, 46)
 Header.BackgroundColor3 = Color3.fromRGB(13, 13, 20)
-Header.BorderSizePixel = 0
+Header.BorderSizePixel  = 0
 
 local HeaderGrad = Instance.new("UIGradient", Header)
 HeaderGrad.Color = ColorSequence.new({
@@ -67,21 +76,21 @@ HeaderGrad.Color = ColorSequence.new({
 HeaderGrad.Rotation = 90
 
 local TopBar = Instance.new("Frame", Main)
-TopBar.Size = UDim2.new(1, 0, 0, 2)
+TopBar.Size             = UDim2.new(1, 0, 0, 2)
 TopBar.BackgroundColor3 = Color3.fromRGB(0, 180, 255)
-TopBar.BorderSizePixel = 0
+TopBar.BorderSizePixel  = 0
 local TopBarGrad = Instance.new("UIGradient", TopBar)
 TopBarGrad.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 120, 255)),
+    ColorSequenceKeypoint.new(0,   Color3.fromRGB(0, 120, 255)),
     ColorSequenceKeypoint.new(0.5, Color3.fromRGB(0, 255, 200)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(120, 0, 255)),
+    ColorSequenceKeypoint.new(1,   Color3.fromRGB(120, 0, 255)),
 })
 
 local PulseDot = Instance.new("Frame", Header)
-PulseDot.Size = UDim2.new(0, 9, 0, 9)
-PulseDot.Position = UDim2.new(0, 14, 0.5, -4)
+PulseDot.Size             = UDim2.new(0, 9, 0, 9)
+PulseDot.Position         = UDim2.new(0, 14, 0.5, -4)
 PulseDot.BackgroundColor3 = Color3.fromRGB(0, 255, 140)
-PulseDot.BorderSizePixel = 0
+PulseDot.BorderSizePixel  = 0
 Instance.new("UICorner", PulseDot).CornerRadius = UDim.new(1, 0)
 
 task.spawn(function()
@@ -94,117 +103,117 @@ task.spawn(function()
 end)
 
 local TitleLabel = Instance.new("TextLabel", Header)
-TitleLabel.Size = UDim2.new(0, 120, 1, 0)
-TitleLabel.Position = UDim2.new(0, 30, 0, 0)
+TitleLabel.Size               = UDim2.new(0, 120, 1, 0)
+TitleLabel.Position           = UDim2.new(0, 30, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "SURVIVOR AI"
-TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-TitleLabel.TextSize = 13
-TitleLabel.Font = Enum.Font.GothamBold
-TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.Text               = "SURVIVOR AI"
+TitleLabel.TextColor3         = Color3.fromRGB(255, 255, 255)
+TitleLabel.TextSize           = 13
+TitleLabel.Font               = Enum.Font.GothamBold
+TitleLabel.TextXAlignment     = Enum.TextXAlignment.Left
 
 local VerLabel = Instance.new("TextLabel", Header)
-VerLabel.Size = UDim2.new(0, 40, 1, 0)
-VerLabel.Position = UDim2.new(0, 148, 0, 0)
+VerLabel.Size               = UDim2.new(0, 40, 1, 0)
+VerLabel.Position           = UDim2.new(0, 148, 0, 0)
 VerLabel.BackgroundTransparency = 1
-VerLabel.Text = "v2.0"
-VerLabel.TextColor3 = Color3.fromRGB(0, 200, 255)
-VerLabel.TextSize = 10
-VerLabel.Font = Enum.Font.Gotham
-VerLabel.TextXAlignment = Enum.TextXAlignment.Left
+VerLabel.Text               = "v2.0"
+VerLabel.TextColor3         = Color3.fromRGB(0, 200, 255)
+VerLabel.TextSize           = 10
+VerLabel.Font               = Enum.Font.Gotham
+VerLabel.TextXAlignment     = Enum.TextXAlignment.Left
 
 local Status = Instance.new("TextLabel", Header)
-Status.Size = UDim2.new(1, -200, 1, 0)
-Status.Position = UDim2.new(0, 195, 0, 0)
+Status.Size               = UDim2.new(1, -200, 1, 0)
+Status.Position           = UDim2.new(0, 195, 0, 0)
 Status.BackgroundTransparency = 1
-Status.Text = "INIT..."
-Status.TextColor3 = Color3.fromRGB(0, 255, 140)
-Status.TextSize = 10
-Status.Font = Enum.Font.GothamBold
-Status.TextXAlignment = Enum.TextXAlignment.Right
-Status.TextTruncate = Enum.TextTruncate.AtEnd
+Status.Text               = "INIT..."
+Status.TextColor3         = Color3.fromRGB(0, 255, 140)
+Status.TextSize           = 10
+Status.Font               = Enum.Font.GothamBold
+Status.TextXAlignment     = Enum.TextXAlignment.Right
+Status.TextTruncate       = Enum.TextTruncate.AtEnd
 
 local BtnSettings = Instance.new("TextButton", Header)
-BtnSettings.Size = UDim2.new(0, 24, 0, 24)
-BtnSettings.Position = UDim2.new(1, -52, 0.5, -12)
-BtnSettings.BackgroundColor3 = Color3.fromRGB(25, 25, 38)
-BtnSettings.BorderSizePixel = 0
-BtnSettings.Text = "⚙"
-BtnSettings.TextColor3 = Color3.fromRGB(180, 180, 220)
-BtnSettings.TextSize = 14
-BtnSettings.Font = Enum.Font.GothamBold
+BtnSettings.Size               = UDim2.new(0, 24, 0, 24)
+BtnSettings.Position           = UDim2.new(1, -52, 0.5, -12)
+BtnSettings.BackgroundColor3   = Color3.fromRGB(25, 25, 38)
+BtnSettings.BorderSizePixel    = 0
+BtnSettings.Text               = "⚙"
+BtnSettings.TextColor3         = Color3.fromRGB(180, 180, 220)
+BtnSettings.TextSize           = 14
+BtnSettings.Font               = Enum.Font.GothamBold
 Instance.new("UICorner", BtnSettings).CornerRadius = UDim.new(0, 6)
 
 local BtnMinimize = Instance.new("TextButton", Header)
-BtnMinimize.Size = UDim2.new(0, 24, 0, 24)
-BtnMinimize.Position = UDim2.new(1, -24, 0.5, -12)
-BtnMinimize.BackgroundColor3 = Color3.fromRGB(25, 25, 38)
-BtnMinimize.BorderSizePixel = 0
-BtnMinimize.Text = "−"
-BtnMinimize.TextColor3 = Color3.fromRGB(180, 180, 220)
-BtnMinimize.TextSize = 16
-BtnMinimize.Font = Enum.Font.GothamBold
+BtnMinimize.Size               = UDim2.new(0, 24, 0, 24)
+BtnMinimize.Position           = UDim2.new(1, -24, 0.5, -12)
+BtnMinimize.BackgroundColor3   = Color3.fromRGB(25, 25, 38)
+BtnMinimize.BorderSizePixel    = 0
+BtnMinimize.Text               = "−"
+BtnMinimize.TextColor3         = Color3.fromRGB(180, 180, 220)
+BtnMinimize.TextSize           = 16
+BtnMinimize.Font               = Enum.Font.GothamBold
 Instance.new("UICorner", BtnMinimize).CornerRadius = UDim.new(0, 6)
 
 local SettingsPanel = Instance.new("Frame", Main)
-SettingsPanel.Size = UDim2.new(1, 0, 0, 220)
-SettingsPanel.Position = UDim2.new(0, 0, 0, 46)
+SettingsPanel.Size             = UDim2.new(1, 0, 0, 220)
+SettingsPanel.Position         = UDim2.new(0, 0, 0, 46)
 SettingsPanel.BackgroundColor3 = Color3.fromRGB(13, 13, 20)
-SettingsPanel.BorderSizePixel = 0
-SettingsPanel.Visible = false
+SettingsPanel.BorderSizePixel  = 0
+SettingsPanel.Visible          = false
 
 local SepLine = Instance.new("Frame", SettingsPanel)
-SepLine.Size = UDim2.new(1, -20, 0, 1)
-SepLine.Position = UDim2.new(0, 10, 0, 0)
+SepLine.Size             = UDim2.new(1, -20, 0, 1)
+SepLine.Position         = UDim2.new(0, 10, 0, 0)
 SepLine.BackgroundColor3 = Color3.fromRGB(30, 30, 50)
-SepLine.BorderSizePixel = 0
+SepLine.BorderSizePixel  = 0
 
 local SettingsTitle = Instance.new("TextLabel", SettingsPanel)
-SettingsTitle.Size = UDim2.new(1, 0, 0, 28)
-SettingsTitle.Position = UDim2.new(0, 0, 0, 6)
+SettingsTitle.Size               = UDim2.new(1, 0, 0, 28)
+SettingsTitle.Position           = UDim2.new(0, 0, 0, 6)
 SettingsTitle.BackgroundTransparency = 1
-SettingsTitle.Text = "⚙  НАСТРОЙКИ"
-SettingsTitle.TextColor3 = Color3.fromRGB(0, 200, 255)
-SettingsTitle.TextSize = 11
-SettingsTitle.Font = Enum.Font.GothamBold
+SettingsTitle.Text               = "⚙  НАСТРОЙКИ"
+SettingsTitle.TextColor3         = Color3.fromRGB(0, 200, 255)
+SettingsTitle.TextSize           = 11
+SettingsTitle.Font               = Enum.Font.GothamBold
 
 local function makeToggle(parent, yPos, label, settingKey)
     local row = Instance.new("Frame", parent)
-    row.Size = UDim2.new(1, -20, 0, 28)
-    row.Position = UDim2.new(0, 10, 0, yPos)
+    row.Size             = UDim2.new(1, -20, 0, 28)
+    row.Position         = UDim2.new(0, 10, 0, yPos)
     row.BackgroundColor3 = Color3.fromRGB(18, 18, 28)
-    row.BorderSizePixel = 0
+    row.BorderSizePixel  = 0
     Instance.new("UICorner", row).CornerRadius = UDim.new(0, 7)
 
     local lbl = Instance.new("TextLabel", row)
-    lbl.Size = UDim2.new(1, -60, 1, 0)
-    lbl.Position = UDim2.new(0, 10, 0, 0)
+    lbl.Size               = UDim2.new(1, -60, 1, 0)
+    lbl.Position           = UDim2.new(0, 10, 0, 0)
     lbl.BackgroundTransparency = 1
-    lbl.Text = label
-    lbl.TextColor3 = Color3.fromRGB(200, 200, 220)
-    lbl.TextSize = 11
-    lbl.Font = Enum.Font.Gotham
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Text               = label
+    lbl.TextColor3         = Color3.fromRGB(200, 200, 220)
+    lbl.TextSize           = 11
+    lbl.Font               = Enum.Font.Gotham
+    lbl.TextXAlignment     = Enum.TextXAlignment.Left
 
     local toggleBg = Instance.new("Frame", row)
-    toggleBg.Size = UDim2.new(0, 38, 0, 18)
-    toggleBg.Position = UDim2.new(1, -46, 0.5, -9)
+    toggleBg.Size             = UDim2.new(0, 38, 0, 18)
+    toggleBg.Position         = UDim2.new(1, -46, 0.5, -9)
     toggleBg.BackgroundColor3 = Settings[settingKey] and Color3.fromRGB(0, 200, 100) or Color3.fromRGB(60, 60, 80)
-    toggleBg.BorderSizePixel = 0
+    toggleBg.BorderSizePixel  = 0
     Instance.new("UICorner", toggleBg).CornerRadius = UDim.new(1, 0)
 
     local knob = Instance.new("Frame", toggleBg)
-    knob.Size = UDim2.new(0, 14, 0, 14)
-    knob.Position = Settings[settingKey] and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)
+    knob.Size             = UDim2.new(0, 14, 0, 14)
+    knob.Position         = Settings[settingKey] and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)
     knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    knob.BorderSizePixel = 0
+    knob.BorderSizePixel  = 0
     Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
 
     local btn = Instance.new("TextButton", row)
-    btn.Size = UDim2.new(1, 0, 1, 0)
+    btn.Size               = UDim2.new(1, 0, 1, 0)
     btn.BackgroundTransparency = 1
-    btn.Text = ""
-    btn.ZIndex = 5
+    btn.Text               = ""
+    btn.ZIndex             = 5
 
     btn.MouseButton1Click:Connect(function()
         Settings[settingKey] = not Settings[settingKey]
@@ -220,14 +229,14 @@ local function makeToggle(parent, yPos, label, settingKey)
     return row
 end
 
-makeToggle(SettingsPanel, 34, "🏆  Auto Win", "AutoWin")
-makeToggle(SettingsPanel, 68, "🖱️  Auto Click Button", "AutoClick")
-makeToggle(SettingsPanel, 102, "👾  Anti Monster", "AntiMonster")
-makeToggle(SettingsPanel, 136, "🌊  Anti Flood", "AntiFlood")
-makeToggle(SettingsPanel, 170, "💰  Auto Tycoon", "AutoTycoon")
+makeToggle(SettingsPanel, 34,  "🏆  Auto Win",          "AutoWin")
+makeToggle(SettingsPanel, 68,  "🖱️  Auto Click Button",  "AutoClick")
+makeToggle(SettingsPanel, 102, "👾  Anti Monster",       "AntiMonster")
+makeToggle(SettingsPanel, 136, "🌊  Anti Flood",         "AntiFlood")
+makeToggle(SettingsPanel, 170, "💰  Auto Tycoon",        "AutoTycoon")
 
 local settingsOpen = false
-local minimized = false
+local minimized    = false
 
 BtnSettings.MouseButton1Click:Connect(function()
     settingsOpen = not settingsOpen
@@ -239,7 +248,7 @@ BtnSettings.MouseButton1Click:Connect(function()
     }):Play()
     BtnSettings.TextColor3 = settingsOpen
         and Color3.fromRGB(0, 200, 255)
-        or Color3.fromRGB(180, 180, 220)
+        or  Color3.fromRGB(180, 180, 220)
 end)
 
 BtnMinimize.MouseButton1Click:Connect(function()
@@ -271,16 +280,18 @@ for _, btn in ipairs({BtnSettings, BtnMinimize}) do
 end
 
 local function setStatus(text, r, g, b)
-    Status.Text = text
-    local col = Color3.fromRGB(r, g, b)
+    Status.Text      = text
+    local col        = Color3.fromRGB(r, g, b)
     PulseDot.BackgroundColor3 = col
-    stroke.Color = col
+    stroke.Color     = col
     TopBarGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(r//2, g//2, b//2)),
+        ColorSequenceKeypoint.new(0,   Color3.fromRGB(r//2, g//2, b//2)),
         ColorSequenceKeypoint.new(0.5, col),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(r//3, g//3, b//3)),
+        ColorSequenceKeypoint.new(1,   Color3.fromRGB(r//3, g//3, b//3)),
     })
 end
+
+local GlowLine = TopBar
 
 -- ============================================================
 -- ANTI-AFK
@@ -299,7 +310,7 @@ local function getChar()
     local char = player.Character
     if not char then return nil, nil, nil end
     local root = char:FindFirstChild("HumanoidRootPart")
-    local hum = char:FindFirstChildOfClass("Humanoid")
+    local hum  = char:FindFirstChildOfClass("Humanoid")
     if not root or not hum or hum.Health <= 0 then return nil, nil, nil end
     return char, root, hum
 end
@@ -312,14 +323,13 @@ local function getLocalWanderPos(root)
         if math.abs(rz) < 6 then rz = rz > 0 and 7 or -7 end
         local targetPos = root.Position + Vector3.new(rx, 0, rz)
         
-        -- Проверка на бездну: рейкастим вниз на 30 стадов
+        -- Проверка на бездну
         local ray = Ray.new(targetPos + Vector3.new(0, 5, 0), Vector3.new(0, -30, 0))
         local hit = workspace:FindPartOnRay(ray, player.Character)
         if hit then
             return targetPos
         end
     end
-    -- Если все 5 попыток плохие — стоим на месте
     return root.Position
 end
 
@@ -332,9 +342,9 @@ local function walkPath(targetPos, maxWaypoints)
     maxWaypoints = maxWaypoints or 999
 
     local path = Pathfinding:CreatePath({
-        AgentRadius = 2.5,
-        AgentHeight = 5,
-        AgentCanJump = true,
+        AgentRadius   = 2.5,
+        AgentHeight   = 5,
+        AgentCanJump  = true,
         WaypointSpacing = 3,
     })
 
@@ -356,9 +366,9 @@ local function walkPath(targetPos, maxWaypoints)
         end
         hum:MoveTo(wps[i].Position)
 
-        local stuckTimer = 0
-        local lastPos = root.Position
-        local arrived = false
+        local stuckTimer  = 0
+        local lastPos     = root.Position
+        local arrived     = false
 
         local conn
         conn = hum.MoveToFinished:Connect(function(reached)
@@ -406,15 +416,15 @@ local function noclipTP(targetPos)
         end
     end
 
-    local start = tick()
+    local start   = tick()
     local timeout = 6
 
     while _G.BotRunning and (root.Position - targetPos).Magnitude > 2 and tick() - start < timeout do
-        local dir = (targetPos - root.Position).Unit
+        local dir  = (targetPos - root.Position).Unit
         local step = math.min(3, (root.Position - targetPos).Magnitude)
         local newP = root.Position + dir * step
 
-        local ray = Ray.new(newP + Vector3.new(0, 8, 0), Vector3.new(0, -16, 0))
+        local ray    = Ray.new(newP + Vector3.new(0, 8, 0), Vector3.new(0, -16, 0))
         local hit, hitPos = workspace:FindPartOnRay(ray, char)
         if hit then
             newP = Vector3.new(newP.X, hitPos.Y + 3, newP.Z)
@@ -435,13 +445,13 @@ end
 local function ensureShield(root)
     if not shieldPart or not shieldPart.Parent then
         shieldPart = Instance.new("Part", workspace)
-        shieldPart.Name = "_BotShield"
-        shieldPart.Size = Vector3.new(10, 1, 10)
-        shieldPart.Anchored = true
-        shieldPart.CanCollide = true
+        shieldPart.Name         = "_BotShield"
+        shieldPart.Size         = Vector3.new(10, 1, 10)
+        shieldPart.Anchored     = true
+        shieldPart.CanCollide   = true
         shieldPart.Transparency = Settings.ShowShield and 0.4 or 1
-        shieldPart.Color = Color3.fromRGB(0, 200, 255)
-        shieldPart.CastShadow = false
+        shieldPart.Color        = Color3.fromRGB(0, 200, 255)
+        shieldPart.CastShadow   = false
     end
     shieldPart.CFrame = CFrame.new(root.Position + Vector3.new(0, 7, 0))
 end
@@ -452,39 +462,9 @@ local function destroyShield()
 end
 
 -- ============================================================
--- D10: ПАДАЮЩИЕ ПЛАТФОРМЫ
+-- D10: ПАДАЮЩИЕ ПЛАТФОРМЫ (ФИКС: СОЗДАЁМ ПЛАТФОРМУ, ЖДЁМ, ТП)
 -- ============================================================
-local d10SafeParts = {}
-local d10StandingOn = nil
-
-local function refreshD10Parts(disaster)
-    d10SafeParts = {}
-    if not disaster then return end
-    local d10 = disaster:FindFirstChild("Disaster10")
-    if not d10 then return end
-    for _, p in ipairs(d10:GetDescendants()) do
-        if p:IsA("BasePart") and p.CanCollide and p.Transparency < 0.5 then
-            table.insert(d10SafeParts, p)
-        end
-    end
-end
-
-local function getBestD10Platform(root, disaster)
-    refreshD10Parts(disaster)
-    local best, bestDist = nil, math.huge
-    for _, p in ipairs(d10SafeParts) do
-        if p and p.Parent and p.CanCollide and p.Transparency < 0.3 then
-            local d = (root.Position - p.Position).Magnitude
-            if d < bestDist then
-                bestDist = d
-                best = p
-            end
-        end
-    end
-    return best
-end
-
-local function getCurrentPlatformUnder(root, disaster)
+local function getCurrentPlatformUnder(root)
     local ray = Ray.new(root.Position, Vector3.new(0, -6, 0))
     local hit = workspace:FindPartOnRay(ray, player.Character)
     return hit
@@ -498,7 +478,7 @@ local function escapeMonster(root, monsterPos)
     if not char then return end
 
     local awayDir = (root.Position - monsterPos).Unit
-    local angles = {0, 45, -45, 90, -90, 120, -120, 180}
+    local angles  = {0, 45, -45, 90, -90, 120, -120, 180}
     local bestDir, bestClear = awayDir, 0
 
     for _, angle in ipairs(angles) do
@@ -515,7 +495,7 @@ local function escapeMonster(root, monsterPos)
 
         if clearDist > bestClear then
             bestClear = clearDist
-            bestDir = dir
+            bestDir   = dir
         end
     end
 
@@ -524,7 +504,7 @@ local function escapeMonster(root, monsterPos)
 end
 
 -- ============================================================
--- DETECTION: MONSTERS, LASERS, ARMED PLAYERS
+-- DETECTION
 -- ============================================================
 local function getClosestMonster(root, disaster)
     local closest, minDist = nil, 28
@@ -553,7 +533,7 @@ local function getClosestKillPart(root, disaster)
     return nil
 end
 
--- Проверка: есть ли у игрока оружие (ClassicSword, RocketLauncher, Knife)
+-- Проверка: есть ли у игрока оружие
 local function playerHasWeapon(plr)
     if not plr.Character then return false end
     for _, tool in ipairs(plr.Character:GetChildren()) do
@@ -583,13 +563,13 @@ end
 
 local function floodEscape(root)
     local best, maxY = root.Position, -math.huge
-    local towerFolder = workspace:FindFirstChild("Tower")
-    local diedPlaceObj = workspace:FindFirstChild("DiedPlace")
+    local towerFolder    = workspace:FindFirstChild("Tower")
+    local diedPlaceObj   = workspace:FindFirstChild("DiedPlace")
 
     for _, p in ipairs(workspace:GetDescendants()) do
         if p:IsA("BasePart") and p.CanCollide and p.Transparency < 0.85
            and not p:IsDescendantOf(player.Character) then
-            if towerFolder and p:IsDescendantOf(towerFolder) then continue end
+            if towerFolder  and p:IsDescendantOf(towerFolder)  then continue end
             if diedPlaceObj and p:IsDescendantOf(diedPlaceObj) then continue end
             local n = string.lower(p:GetFullName())
             if not string.find(n,"water") and not string.find(n,"flood")
@@ -636,9 +616,12 @@ end
 -- ============================================================
 -- VIRTUAL MOUSE (RocketLauncher)
 -- ============================================================
-local mouse = player:GetMouse()
-local targetOverride = nil
+local mouse           = player:GetMouse()
+local targetOverride  = nil
 local isHoldingRocket = false
+local d9WinReached    = false
+local winReached      = false
+local winBtnReached   = false
 
 local ok, mt = pcall(getrawmetatable, game)
 if ok and mt then
@@ -646,7 +629,7 @@ if ok and mt then
     pcall(setreadonly, mt, false)
     mt.__index = newcclosure(function(self, key)
         if self == mouse and isHoldingRocket and targetOverride and targetOverride.Parent then
-            if key == "Hit" then return targetOverride.CFrame end
+            if key == "Hit"    then return targetOverride.CFrame end
             if key == "Target" then return targetOverride end
         end
         return oldIndex(self, key)
@@ -660,9 +643,9 @@ end
 local function cleanupExtras()
     destroyShield()
     if standPart and standPart.Parent then standPart:Destroy() end
-    standPart = nil
-    d10Initialized = false
-    targetOverride = nil
+    standPart       = nil
+    d10Initialized  = false
+    targetOverride  = nil
     isHoldingRocket = false
 end
 
@@ -677,21 +660,31 @@ task.spawn(function()
             local char, root, hum = getChar()
             if not char then cleanupExtras() return end
 
-         if char ~= lastCharacter then
-            lastCharacter = char
-            wanderTarget = nil
-            _G.d6ReturnPos = nil  -- Сбрасываем при респавне
-            cleanupExtras()
-        end
+            if char ~= lastCharacter then
+                lastCharacter = char
+                wanderTarget  = nil
+                d9WinReached  = false
+                winReached    = false
+                winBtnReached = false
+                _G.d6ReturnPos = nil
+                _G.d6TpCount = 0
+                cleanupExtras()
+            end
 
             local disaster = workspace:FindFirstChild("Disaster")
 
-            local d2 = disaster and (disaster:FindFirstChild("Disaster2") or disaster:FindFirstChild("Hamster", true))
-            local d3 = disaster and disaster:FindFirstChild("Disaster3")
-            local d4 = disaster and disaster:FindFirstChild("Disaster4")
-            local d6 = disaster and disaster:FindFirstChild("Disaster6")
-            local d7 = disaster and disaster:FindFirstChild("Disaster7")
-            local d9 = disaster and disaster:FindFirstChild("Disaster9")
+            if not disaster or #disaster:GetChildren() == 0 then
+                d9WinReached  = false
+                winReached    = false
+                winBtnReached = false
+            end
+
+            local d2  = disaster and (disaster:FindFirstChild("Disaster2") or disaster:FindFirstChild("Hamster", true))
+            local d3  = disaster and disaster:FindFirstChild("Disaster3")
+            local d4  = disaster and disaster:FindFirstChild("Disaster4")
+            local d6  = disaster and disaster:FindFirstChild("Disaster6")
+            local d7  = disaster and disaster:FindFirstChild("Disaster7")
+            local d9  = disaster and disaster:FindFirstChild("Disaster9")
             local d10 = disaster and disaster:FindFirstChild("Disaster10")
             local d11 = disaster and disaster:FindFirstChild("Disaster11")
             local d12 = disaster and disaster:FindFirstChild("Disaster12")
@@ -701,22 +694,21 @@ task.spawn(function()
             local d22 = disaster and disaster:FindFirstChild("Disaster22")
             local d24 = disaster and disaster:FindFirstChild("Disaster24")
 
-            local activeMonster = Settings.AntiMonster and getClosestMonster(root, disaster) or nil
-            local dangerousKill = getClosestKillPart(root, disaster)
-            local floodActive = Settings.AntiFlood and isFloodActive(disaster) or false
+            local activeMonster   = Settings.AntiMonster and getClosestMonster(root, disaster) or nil
+            local dangerousKill   = getClosestKillPart(root, disaster)
+            local floodActive     = Settings.AntiFlood and isFloodActive(disaster) or false
 
-            local winPart = Settings.AutoWin and disaster and disaster:FindFirstChild("Win", true) or nil
+            local winPart     = Settings.AutoWin and disaster and disaster:FindFirstChild("Win", true) or nil
             local CLICKButton = Settings.AutoClick and workspace:FindFirstChild("CLICKButton", true) or nil
+            local weapon      = char:FindFirstChild("ClassicSword") or player.Backpack:FindFirstChild("ClassicSword")
+                             or char:FindFirstChild("RocketLauncher") or player.Backpack:FindFirstChild("RocketLauncher")
+            local tycoonBtn, tycoonPrice = nil, 0
+            if Settings.AutoTycoon then tycoonBtn, tycoonPrice = getCheapestTycoonButton(disaster) end
+            local winButton = Settings.AutoTycoon and disaster and disaster:FindFirstChild("WinBUTTON", true) or nil
 
-            -- ПРОВЕРКА ОРУЖИЯ У БОТА
-            local mySword = char:FindFirstChild("ClassicSword") or player.Backpack:FindFirstChild("ClassicSword")
-            local myRocket = char:FindFirstChild("RocketLauncher") or player.Backpack:FindFirstChild("RocketLauncher")
-            local myWeapon = mySword or myRocket
-            local hasWeapon = myWeapon ~= nil
-
-            -- ПРОВЕРКА: ЕСТЬ ЛИ ВРАГ С ОРУЖИЕМ (от кого убегать если мы без оружия)
+            -- ПРОВЕРКА: ВРАГ С ОРУЖИЕМ
             local enemyWithWeapon = nil
-            if not hasWeapon then
+            if not weapon then
                 for _, p in ipairs(game.Players:GetPlayers()) do
                     if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
                         local hasWep, tool = playerHasWeapon(p)
@@ -730,10 +722,6 @@ task.spawn(function()
                     end
                 end
             end
-
-            local tycoonBtn, tycoonPrice = nil, 0
-            if Settings.AutoTycoon then tycoonBtn, tycoonPrice = getCheapestTycoonButton(disaster) end
-            local winButton = Settings.AutoTycoon and disaster and disaster:FindFirstChild("WinBUTTON", true) or nil
 
             -- ====================================================
             -- ИЕРАРХИЯ ПРИОРИТЕТОВ
@@ -760,134 +748,139 @@ task.spawn(function()
                 end
                 walkDirect(wanderTarget)
 
-            -- ── DISASTER 6: NUKE ──────────────────────────────
-          elseif d6 then
+            -- ── DISASTER 6: NUKE (TP SAFEZONE 3x → ROAMING) ──
+            elseif d6 then
                 cleanupExtras()
-                setStatus("D6 NUKE: TP → SAFEZONE → BACK", 220, 30, 30)
                 
-                -- Сохраняем позицию ДО телепорта (если ещё не сохранена)
-                if not _G.d6ReturnPos then
-                    _G.d6ReturnPos = root.Position
-                end
+                if not _G.d6TpCount then _G.d6TpCount = 0 end
                 
-                local zones = {}
-                for _, p in ipairs(d6:GetDescendants()) do
-                    if p:IsA("BasePart") and string.lower(p.Name) == "safezone" then
-                        table.insert(zones, p)
-                    end
-                end
-                
-                if #zones > 0 then
-                    local closest, closestDist = nil, math.huge
-                    for _, z in ipairs(zones) do
-                        local d = (root.Position - z.Position).Magnitude
-                        if d < closestDist then closestDist = d closest = z end
-                    end
-                    
-                    if closest then
-                        -- ТП в safeZone
-                        root.CFrame = CFrame.new(closest.Position + Vector3.new(0, 3, 0))
-                        setStatus("D6 NUKE: TOUCHED SAFEZONE!", 0, 255, 100)
-                        task.wait(0.3)
-                        
-                        -- ТП обратно на сохранённую позицию
-                        if _G.d6ReturnPos then
-                            -- Проверяем что позиция безопасна (рейкаст вниз)
-                            local ray = Ray.new(_G.d6ReturnPos + Vector3.new(0, 10, 0), Vector3.new(0, -30, 0))
-                            local hit = workspace:FindPartOnRay(ray, player.Character)
-                            if hit then
-                                root.CFrame = CFrame.new(_G.d6ReturnPos)
-                                setStatus("D6 NUKE: RETURNED TO POSITION", 0, 255, 140)
-                            else
-                                -- Если старая позиция в бездне — ищем безопасное место рядом
-                                local safeFound = false
-                                for attempt = 1, 8 do
-                                    local rx = math.random(-20, 20)
-                                    local rz = math.random(-20, 20)
-                                    local testPos = _G.d6ReturnPos + Vector3.new(rx, 0, rz)
-                                    local testRay = Ray.new(testPos + Vector3.new(0, 10, 0), Vector3.new(0, -30, 0))
-                                    if workspace:FindPartOnRay(testRay, player.Character) then
-                                        root.CFrame = CFrame.new(testPos)
-                                        safeFound = true
-                                        setStatus("D6 NUKE: RETURNED NEARBY", 0, 255, 140)
-                                        break
-                                    end
-                                end
-                                if not safeFound then
-                                    setStatus("D6 NUKE: STAYING IN SAFEZONE", 255, 150, 0)
-                                end
-                            end
-                        end
-                        _G.d6ReturnPos = nil -- Сбрасываем для следующего раза
-                    end
-                else
-                    -- Если safeZone не найдена — просто роумим
-                    setStatus("D6 NUKE: NO SAFEZONE FOUND", 255, 150, 0)
+                if _G.d6TpCount >= 3 then
+                    setStatus("D6 NUKE: ROAMING (3 TP DONE)", 0, 200, 100)
                     if not wanderTarget or (root.Position - wanderTarget).Magnitude < 4 then
                         wanderTarget = getLocalWanderPos(root)
                     end
                     walkDirect(wanderTarget)
+                else
+                    setStatus("D6 NUKE: TP → SAFEZONE → BACK (" .. (_G.d6TpCount + 1) .. "/3)", 220, 30, 30)
+                    
+                    if not _G.d6ReturnPos then
+                        _G.d6ReturnPos = root.Position
+                    end
+                    
+                    local zones = {}
+                    for _, p in ipairs(d6:GetDescendants()) do
+                        if p:IsA("BasePart") and string.lower(p.Name) == "safezone" then
+                            table.insert(zones, p)
+                        end
+                    end
+                    
+                    if #zones > 0 then
+                        local closest, closestDist = nil, math.huge
+                        for _, z in ipairs(zones) do
+                            local d = (root.Position - z.Position).Magnitude
+                            if d < closestDist then closestDist = d closest = z end
+                        end
+                        
+                        if closest then
+                            root.CFrame = CFrame.new(closest.Position + Vector3.new(0, 3, 0))
+                            setStatus("D6 NUKE: TOUCHED SAFEZONE! (" .. (_G.d6TpCount + 1) .. "/3)", 0, 255, 100)
+                            task.wait(0.3)
+                            
+                            _G.d6TpCount = _G.d6TpCount + 1
+                            
+                            if _G.d6TpCount < 3 and _G.d6ReturnPos then
+                                local ray = Ray.new(_G.d6ReturnPos + Vector3.new(0, 10, 0), Vector3.new(0, -30, 0))
+                                local hit = workspace:FindPartOnRay(ray, player.Character)
+                                if hit then
+                                    root.CFrame = CFrame.new(_G.d6ReturnPos)
+                                    setStatus("D6 NUKE: RETURNED (" .. _G.d6TpCount .. "/3)", 0, 255, 140)
+                                else
+                                    local safeFound = false
+                                    for attempt = 1, 8 do
+                                        local rx = math.random(-20, 20)
+                                        local rz = math.random(-20, 20)
+                                        local testPos = _G.d6ReturnPos + Vector3.new(rx, 0, rz)
+                                        local testRay = Ray.new(testPos + Vector3.new(0, 10, 0), Vector3.new(0, -30, 0))
+                                        if workspace:FindPartOnRay(testRay, player.Character) then
+                                            root.CFrame = CFrame.new(testPos)
+                                            safeFound = true
+                                            setStatus("D6 NUKE: RETURNED NEARBY (" .. _G.d6TpCount .. "/3)", 0, 255, 140)
+                                            break
+                                        end
+                                    end
+                                    if not safeFound then
+                                        setStatus("D6 NUKE: STAYING IN SAFEZONE", 255, 150, 0)
+                                    end
+                                end
+                            else
+                                _G.d6ReturnPos = nil
+                                setStatus("D6 NUKE: 3 TP DONE, ROAMING", 0, 200, 100)
+                            end
+                        end
+                    else
+                        setStatus("D6 NUKE: NO SAFEZONE FOUND", 255, 150, 0)
+                        if not wanderTarget or (root.Position - wanderTarget).Magnitude < 4 then
+                            wanderTarget = getLocalWanderPos(root)
+                        end
+                        walkDirect(wanderTarget)
+                    end
                 end
 
             -- ── DISASTER 9: MAZE ──────────────────────────────
             elseif d9 then
                 cleanupExtras()
-                if winPart then
+                if d9WinReached then
+                    setStatus("D9 MAZE: WIN REACHED!", 0, 255, 140)
+                    hum:MoveTo(root.Position)
+                elseif winPart then
                     local dist = (root.Position - winPart.Position).Magnitude
                     if dist <= 5 then
+                        d9WinReached = true
                         setStatus("D9 MAZE: WIN REACHED!", 0, 255, 140)
                         hum:MoveTo(root.Position)
                     else
                         setStatus("D9 MAZE: PATHFINDING TO WIN", 80, 0, 200)
                         walkPath(winPart.Position + Vector3.new(0, 2, 0), 20)
+                        task.wait(0.3)
+                        local _, root2 = getChar()
+                        if root2 then
+                            local newDist = (root2.Position - winPart.Position).Magnitude
+                            if newDist <= 5 then
+                                d9WinReached = true
+                            elseif newDist > 8 then
+                                setStatus("D9 MAZE: NOCLIP FALLBACK!", 160, 0, 255)
+                                noclipTP(winPart.Position + Vector3.new(0, 2, 0))
+                                d9WinReached = true
+                            end
+                        end
                     end
                 end
 
-            -- ── DISASTER 10: FALLING PLATFORMS ────────────────
+            -- ── DISASTER 10: FALLING PLATFORMS (ФИКС) ─────────
             elseif d10 then
                 if shieldPart and shieldPart.Parent then destroyShield() end
-                setStatus("D10 PLATFORMS: SMART SURVIVAL", 255, 200, 0)
-
-                local underPart = getCurrentPlatformUnder(root, disaster)
-                local needMove = false
-
-                if underPart then
-                    if underPart.Transparency > 0.05 or not underPart.CanCollide then
-                        needMove = true
-                    end
-                else
-                    needMove = true
+                setStatus("D10 PLATFORMS: CREATING SAFE PLATFORM", 255, 200, 0)
+                
+                -- Создаём платформу под ботом
+                if not standPart or not standPart.Parent then
+                    standPart = Instance.new("Part", workspace)
+                    standPart.Name        = "_BotStandPlatform"
+                    standPart.Size        = Vector3.new(6, 1, 6)
+                    standPart.Anchored    = true
+                    standPart.CanCollide  = true
+                    standPart.Transparency = 0.5
+                    standPart.Color       = Color3.fromRGB(0, 255, 140)
+                    standPart.Material    = Enum.Material.Neon
                 end
-
-                if needMove then
-                    local bestPart = getBestD10Platform(root, disaster)
-                    if bestPart then
-                        hum.Jump = true
-                        walkDirect(bestPart.Position + Vector3.new(0, 4, 0))
-                    else
-                        if not standPart or not standPart.Parent then
-                            standPart = Instance.new("Part", workspace)
-                            standPart.Name = "_BotStandPlatform"
-                            standPart.Size = Vector3.new(6, 1, 6)
-                            standPart.Anchored = true
-                            standPart.CanCollide = true
-                            standPart.Transparency = 0.5
-                            standPart.Color = Color3.fromRGB(0, 255, 140)
-                            standPart.Material = Enum.Material.Neon
-                        end
-                        standPart.CFrame = CFrame.new(root.Position - Vector3.new(0, 3, 0))
-                    end
-                else
-                    if not wanderTarget or (root.Position - wanderTarget).Magnitude < 2 then
-                        if underPart then
-                            local s = underPart.Size
-                            local rX = math.random(-math.floor(s.X/2)+1, math.floor(s.X/2)-1)
-                            local rZ = math.random(-math.floor(s.Z/2)+1, math.floor(s.Z/2)-1)
-                            wanderTarget = underPart.Position + Vector3.new(rX, 3, rZ)
-                        end
-                    end
-                    if wanderTarget then walkDirect(wanderTarget) end
-                    if standPart and standPart.Parent then standPart:Destroy() standPart = nil end
+                standPart.CFrame = CFrame.new(root.Position - Vector3.new(0, 3, 0))
+                
+                setStatus("D10 PLATFORMS: WAITING 1s → TP", 255, 200, 0)
+                task.wait(1)
+                
+                -- ТП на платформу
+                if standPart and standPart.Parent then
+                    root.CFrame = CFrame.new(standPart.Position + Vector3.new(0, 4, 0))
+                    setStatus("D10 PLATFORMS: SAFE ON PLATFORM", 0, 255, 140)
                 end
 
             -- ── DISASTER 11: BUTTON CLICKER ──────────────────
@@ -919,7 +912,7 @@ task.spawn(function()
                 setStatus("FLOOD: TP TO HIGH GROUND!", 255, 50, 50)
                 floodEscape(root)
 
-            -- ── УБЕГАНИЕ ОТ ИГРОКА С ОРУЖИЕМ (если бот без оружия)
+            -- ── ВРАГ С ОРУЖИЕМ (бота нет оружия) ────────────
             elseif enemyWithWeapon then
                 cleanupExtras()
                 setStatus("⚠️ ENEMY ARMED! ESCAPING", 255, 0, 80)
@@ -1003,104 +996,10 @@ task.spawn(function()
                     end
                 end
 
-            -- ── АГРЕССИВНЫЙ РЕЖИМ: АТАКА ИГРОКОВ ────────────
-            elseif hasWeapon then
-                cleanupExtras()
-                
-                -- Экипируем оружие если оно в рюкзаке
-                if myWeapon.Parent == player.Backpack then
-                    hum:EquipTool(myWeapon)
-                    task.wait(0.15)
-                end
-                
-                -- Повторно проверяем что оружие в руках
-                myWeapon = char:FindFirstChild("ClassicSword") or char:FindFirstChild("RocketLauncher")
-                if not myWeapon then
-                    -- Не удалось экипировать — сбрасываем флаг и уходим в роуминг
-                    hasWeapon = false
-                    setStatus("ROAMING (NO WEAPON EQUIPPED)", 0, 255, 140)
-                    if not wanderTarget or (root.Position - wanderTarget).Magnitude < 4 then
-                        wanderTarget = getLocalWanderPos(root)
-                    end
-                    walkDirect(wanderTarget)
-                else
-                    isHoldingRocket = (myWeapon.Name == "RocketLauncher")
-                    
-                    -- Ищем ближайшего живого игрока
-                    local target, targetPlayer = nil, nil
-                    local bestDist = 1000
-                    for _, p in ipairs(game.Players:GetPlayers()) do
-                        if p ~= player and p.Character 
-                            and p.Character:FindFirstChild("HumanoidRootPart")
-                            and p.Character:FindFirstChildOfClass("Humanoid")
-                            and p.Character.Humanoid.Health > 0 then
-                            local d = (root.Position - p.Character.HumanoidRootPart.Position).Magnitude
-                            if d < bestDist then
-                                bestDist = d
-                                target = p.Character.HumanoidRootPart
-                                targetPlayer = p
-                            end
-                        end
-                    end
-                    
-                    if target and targetPlayer then
-                        targetOverride = target
-                        
-                        -- Всегда смотрим на цель
-                        root.CFrame = CFrame.new(root.Position, Vector3.new(target.Position.X, root.Position.Y, target.Position.Z))
-                        
-                        if isHoldingRocket then
-                            -- ROCKET LAUNCHER
-                            setStatus("ROCKET: FIRING AT " .. targetPlayer.Name, 255, 80, 0)
-                            
-                            if bestDist > 25 then
-                                -- Далеко — идём к цели
-                                hum:MoveTo(target.Position)
-                            elseif bestDist < 12 then
-                                -- Слишком близко — отходим
-                                local back = root.Position + (root.Position - target.Position).Unit * 15
-                                hum:MoveTo(back)
-                            else
-                                -- Идеальная дистанция — стоим и стреляем
-                                hum:MoveTo(root.Position)
-                            end
-                            
-                            -- Наводим камеру
-                            local cam = workspace.CurrentCamera
-                            if cam then
-                                cam.CFrame = CFrame.new(cam.CFrame.Position, target.Position)
-                            end
-                            
-                            -- СТРЕЛЯЕМ
-                            pcall(function() myWeapon:Activate() end)
-                            
-                        else
-                            -- CLASSIC SWORD: БЕЖИМ И РУБИМ
-                            setStatus("SWORD: ATTACKING " .. targetPlayer.Name, 255, 60, 0)
-                            
-                            -- Всегда бежим прямо к цели
-                            hum:MoveTo(target.Position)
-                            
-                            -- Машем мечом
-                            pcall(function() myWeapon:Activate() end)
-                            task.wait(0.05)
-                            pcall(function() myWeapon:Activate() end)
-                        end
-                    else
-                        -- Нет целей — сбрасываем
-                        targetOverride = nil
-                        isHoldingRocket = false
-                        setStatus("ROAMING (NO TARGETS)", 0, 255, 140)
-                        if not wanderTarget or (root.Position - wanderTarget).Magnitude < 4 then
-                            wanderTarget = getLocalWanderPos(root)
-                        end
-                        walkDirect(wanderTarget)
-                    end
-                end
-
             -- ── TYCOON: IButton ──────────────────────────────
             elseif tycoonBtn then
                 cleanupExtras()
+                winBtnReached = false
                 setStatus("TYCOON: BUYING ($" .. tycoonPrice .. ")", 0, 230, 255)
                 local distanceToBtn = (root.Position - tycoonBtn.Position).Magnitude
                 if distanceToBtn <= 4 then
@@ -1112,7 +1011,7 @@ task.spawn(function()
                 end
 
             -- ── TYCOON: WinBUTTON ────────────────────────────
-            elseif winButton then
+            elseif winButton and not winBtnReached then
                 cleanupExtras()
                 setStatus("TYCOON FINISHED: WINBUTTON!", 255, 0, 180)
                 local targetNode = winButton:FindFirstChild("Detect")
@@ -1120,6 +1019,7 @@ task.spawn(function()
                     or winButton
                 local distanceToWinBtn = (root.Position - targetNode.Position).Magnitude
                 if distanceToWinBtn <= 4 then
+                    winBtnReached = true
                     hum.Jump = true
                     local drift = (tick() % 1 > 0.5) and 1 or -1
                     walkDirect(targetNode.Position + Vector3.new(drift, 0, 0))
@@ -1127,17 +1027,100 @@ task.spawn(function()
                     walkPath(targetNode.Position)
                 end
 
+            elseif winButton and winBtnReached then
+                cleanupExtras()
+                setStatus("TYCOON: WIN DONE, WAITING", 0, 255, 140)
+                hum:MoveTo(root.Position)
+
+            -- ── ОРУЖИЕ (Sword / RocketLauncher) ──────────────
+            elseif weapon then
+                cleanupExtras()
+                
+                if weapon.Parent == player.Backpack then
+                    hum:EquipTool(weapon)
+                    task.wait(0.15)
+                end
+                
+                weapon = char:FindFirstChild("ClassicSword") or char:FindFirstChild("RocketLauncher")
+                if not weapon then
+                    targetOverride = nil
+                    isHoldingRocket = false
+                    setStatus("ROAMING (NO WEAPON EQUIPPED)", 0, 255, 140)
+                    if not wanderTarget or (root.Position - wanderTarget).Magnitude < 4 then
+                        wanderTarget = getLocalWanderPos(root)
+                    end
+                    walkDirect(wanderTarget)
+                else
+                    isHoldingRocket = (weapon.Name == "RocketLauncher")
+                    
+                    local target, targetPlayer = nil, nil
+                    local bestDist = 1000
+                    for _, p in ipairs(game.Players:GetPlayers()) do
+                        if p ~= player and p.Character
+                        and p.Character:FindFirstChild("HumanoidRootPart")
+                        and p.Character:FindFirstChildOfClass("Humanoid")
+                        and p.Character.Humanoid.Health > 0 then
+                            local d = (root.Position - p.Character.HumanoidRootPart.Position).Magnitude
+                            if d < bestDist then
+                                bestDist = d
+                                target = p.Character.HumanoidRootPart
+                                targetPlayer = p
+                            end
+                        end
+                    end
+                    
+                    if target and targetPlayer then
+                        targetOverride = target
+                        root.CFrame = CFrame.new(root.Position, Vector3.new(target.Position.X, root.Position.Y, target.Position.Z))
+                        
+                        if isHoldingRocket then
+                            setStatus("ROCKET: FIRING AT " .. targetPlayer.Name, 255, 80, 0)
+                            if bestDist > 25 then
+                                hum:MoveTo(target.Position)
+                            elseif bestDist < 12 then
+                                local back = root.Position + (root.Position - target.Position).Unit * 15
+                                hum:MoveTo(back)
+                            else
+                                hum:MoveTo(root.Position)
+                            end
+                            local cam = workspace.CurrentCamera
+                            if cam then cam.CFrame = CFrame.new(cam.CFrame.Position, target.Position) end
+                            pcall(function() weapon:Activate() end)
+                        else
+                            setStatus("SWORD: ATTACKING " .. targetPlayer.Name, 255, 60, 0)
+                            hum:MoveTo(target.Position)
+                            pcall(function() weapon:Activate() end)
+                            task.wait(0.05)
+                            pcall(function() weapon:Activate() end)
+                        end
+                    else
+                        targetOverride = nil
+                        isHoldingRocket = false
+                        setStatus("ROAMING (NO TARGETS)", 0, 255, 140)
+                        if not wanderTarget or (root.Position - wanderTarget).Magnitude < 4 then
+                            wanderTarget = getLocalWanderPos(root)
+                        end
+                        walkDirect(wanderTarget)
+                    end
+                end
+
             -- ── WIN PART ─────────────────────────────────────
-            elseif winPart then
+            elseif winPart and not winReached then
                 cleanupExtras()
                 local distToWin = (root.Position - winPart.Position).Magnitude
                 if distToWin <= 5 then
-                    setStatus("WIN REACHED!", 0, 255, 140)
+                    winReached = true
+                    setStatus("WIN REACHED! STANDING BY", 0, 255, 140)
                     hum:MoveTo(root.Position)
                 else
                     setStatus("PATHFINDING TO WIN PART!", 180, 50, 255)
                     walkPath(winPart.Position)
                 end
+
+            elseif winPart and winReached then
+                cleanupExtras()
+                setStatus("WIN REACHED! STANDING BY", 0, 255, 140)
+                hum:MoveTo(root.Position)
 
             -- ── CLICK BUTTON ─────────────────────────────────
             elseif CLICKButton then
@@ -1167,4 +1150,4 @@ task.spawn(function()
 end) -- task.spawn
 
 print("[BOT v2.0] Loaded. Don't Press The Button X")
-print("[BOT] Aggressive mode: ON | Anti-void roaming: ON | Armed enemy escape: ON")
+print("[BOT] Aggressive mode: ON | Anti-void roaming: ON | D10 platform fix: ON")
