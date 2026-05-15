@@ -676,20 +676,22 @@ end
 -- ============================================================
 -- TYCOON HELPERS
 -- ============================================================
-local function getCheapestTycoonButton(disaster)
-    local cheapestBtn, lowestPrice = nil, math.huge
-    if not disaster then return nil, math.huge end
-    for _, obj in ipairs(disaster:GetDescendants()) do
+local function getCheapestTycoonButton(disasterFolder)
+    local cheapestBtn = nil
+    local lowestPrice = math.huge
+    if not disasterFolder then return nil, math.huge end
+    for _, obj in ipairs(disasterFolder:GetDescendants()) do
         if obj.Name == "IButton" and obj:FindFirstChild("Detect") then
             pcall(function()
-                local gui    = obj:FindFirstChildWhichIsA("SurfaceGui", true) or obj:FindFirstChild("Gui")
-                local info   = gui and gui:FindFirstChild("Info")
-                local pLabel = info and info:FindFirstChild("Price")
-                if pLabel then
-                    local num = tonumber(pLabel.Text:gsub("%D",""))
-                    if num and num < lowestPrice then
-                        lowestPrice   = num
-                        cheapestBtn   = obj:FindFirstChild("Detect")
+                local gui = obj:FindFirstChild("Gui")
+                local info = gui and gui:FindFirstChild("Info")
+                local priceLabel = info and info:FindFirstChild("Price")
+                if priceLabel and (priceLabel:IsA("TextLabel") or priceLabel:IsA("TextBox")) then
+                    local priceText = priceLabel.Text:gsub("%D", "")
+                    local priceNum = tonumber(priceText)
+                    if priceNum and priceNum < lowestPrice then
+                        lowestPrice = priceNum
+                        cheapestBtn = obj:FindFirstChild("Detect")
                     end
                 end
             end)
@@ -701,10 +703,12 @@ end
 -- ============================================================
 -- VIRTUAL MOUSE (для RocketLauncher)
 -- ============================================================
-local mouse          = player:GetMouse()
-local targetOverride = nil
+local mouse           = player:GetMouse()
+local targetOverride  = nil
 local isHoldingRocket = false
-local d9WinReached   = false  -- D9: флаг "уже дошли до Win, не летим снова"
+local d9WinReached    = false  -- D9: флаг "уже дошли до Win maze"
+local winReached      = false  -- глобальный Win part достигнут
+local winBtnReached   = false  -- WinBUTTON достигнут
 
 local ok, mt = pcall(getrawmetatable, game)
 if ok and mt then
@@ -747,12 +751,19 @@ task.spawn(function()
                 lastCharacter = char
                 wanderTarget  = nil
                 d9WinReached  = false
+                winReached    = false
+                winBtnReached = false
                 cleanupExtras()
             end
 
             local disaster = workspace:FindFirstChild("Disaster")
 
-            -- сбрасываем флаг maze если раунд кончился
+            -- сбрасываем флаги если раунд кончился (disaster пустой)
+            if not disaster or #disaster:GetChildren() == 0 then
+                d9WinReached  = false
+                winReached    = false
+                winBtnReached = false
+            end
             if not d9 then d9WinReached = false end
             local d3  = disaster and disaster:FindFirstChild("Disaster3")
             local d4  = disaster and disaster:FindFirstChild("Disaster4")
@@ -1033,9 +1044,10 @@ task.spawn(function()
                     end
                 end
 
-            -- ── TYCOON BUTTON (любой раунд) ───────────────────────
+            -- ── TYCOON: IButton (пока есть кнопки) ───────────────
             elseif tycoonBtn then
                 cleanupExtras()
+                winBtnReached = false  -- сбрасываем если появились новые кнопки
                 setStatus("TYCOON: BUYING ($" .. tycoonPrice .. ")", 0, 230, 255)
                 local distanceToBtn = (root.Position - tycoonBtn.Position).Magnitude
                 if distanceToBtn <= 4 then
@@ -1046,18 +1058,27 @@ task.spawn(function()
                     walkPath(tycoonBtn.Position)
                 end
 
-            elseif winButton then
+            -- ── TYCOON: WinBUTTON (все IButton куплены) ──────────
+            elseif winButton and not winBtnReached then
                 cleanupExtras()
-                setStatus("TYCOON FINISHED: WINBUTTON ACTIVE", 255, 0, 180)
-                local targetNode = winButton:FindFirstChild("Detect") or winButton:FindFirstChildWhichIsA("BasePart", true) or winButton
+                setStatus("TYCOON FINISHED: WINBUTTON!", 255, 0, 180)
+                local targetNode = winButton:FindFirstChild("Detect")
+                    or winButton:FindFirstChildWhichIsA("BasePart", true)
+                    or winButton
                 local distanceToWinBtn = (root.Position - targetNode.Position).Magnitude
                 if distanceToWinBtn <= 4 then
+                    winBtnReached = true
                     hum.Jump = true
                     local drift = (tick() % 1 > 0.5) and 1 or -1
                     walkDirect(targetNode.Position + Vector3.new(drift, 0, 0))
                 else
                     walkPath(targetNode.Position)
                 end
+
+            elseif winButton and winBtnReached then
+                cleanupExtras()
+                setStatus("TYCOON: WIN DONE, WAITING", 0, 255, 140)
+                hum:MoveTo(root.Position)
 
             -- ── ОРУЖИЕ ────────────────────────────────────────────
             elseif weapon then
@@ -1090,10 +1111,22 @@ task.spawn(function()
                 end
 
             -- ── WIN PART ──────────────────────────────────────────
-            elseif winPart then
+            elseif winPart and not winReached then
                 cleanupExtras()
-                setStatus("PATHFINDING TO WIN PART!", 180, 50, 255)
-                walkPath(winPart.Position)
+                local distToWin = (root.Position - winPart.Position).Magnitude
+                if distToWin <= 5 then
+                    winReached = true
+                    setStatus("WIN REACHED! STANDING BY", 0, 255, 140)
+                    hum:MoveTo(root.Position)
+                else
+                    setStatus("PATHFINDING TO WIN PART!", 180, 50, 255)
+                    walkPath(winPart.Position)
+                end
+
+            elseif winPart and winReached then
+                cleanupExtras()
+                setStatus("WIN REACHED! STANDING BY", 0, 255, 140)
+                hum:MoveTo(root.Position)
 
             -- ── CLICK BUTTON (старт раунда) ───────────────────────
             elseif CLICKButton then
