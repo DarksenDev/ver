@@ -527,7 +527,7 @@ local function getClosestKillPart(root, disaster)
     if not disaster then return nil end
     for _, obj in ipairs(disaster:GetDescendants()) do
         if obj:IsA("BasePart") and obj.Name == "Kill" then
-            if (root.Position - obj.Position).Magnitude < 16 then return obj end
+            if (root.Position - obj.Position).Magnitude < 22 then return obj end
         end
     end
     return nil
