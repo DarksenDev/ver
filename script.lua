@@ -748,7 +748,7 @@ task.spawn(function()
                 end
                 walkDirect(wanderTarget)
 
-            -- ── DISASTER 6: NUKE (TP SAFEZONE 3x → ROAMING) ──
+                       -- ── DISASTER 6: NUKE (TP SAFEZONE 3x → HOUSE.POL) ──
             elseif d6 then
                 cleanupExtras()
                 
@@ -761,11 +761,7 @@ task.spawn(function()
                     end
                     walkDirect(wanderTarget)
                 else
-                    setStatus("D6 NUKE: TP → SAFEZONE → BACK (" .. (_G.d6TpCount + 1) .. "/3)", 220, 30, 30)
-                    
-                    if not _G.d6ReturnPos then
-                        _G.d6ReturnPos = root.Position
-                    end
+                    setStatus("D6 NUKE: TP → SAFEZONE → HOUSE.POL (" .. (_G.d6TpCount + 1) .. "/3)", 220, 30, 30)
                     
                     local zones = {}
                     for _, p in ipairs(d6:GetDescendants()) do
@@ -782,38 +778,25 @@ task.spawn(function()
                         end
                         
                         if closest then
+                            -- ТП в safeZone (касание)
                             root.CFrame = CFrame.new(closest.Position + Vector3.new(0, 3, 0))
                             setStatus("D6 NUKE: TOUCHED SAFEZONE! (" .. (_G.d6TpCount + 1) .. "/3)", 0, 255, 100)
                             task.wait(0.3)
                             
                             _G.d6TpCount = _G.d6TpCount + 1
                             
-                            if _G.d6TpCount < 3 and _G.d6ReturnPos then
-                                local ray = Ray.new(_G.d6ReturnPos + Vector3.new(0, 10, 0), Vector3.new(0, -30, 0))
-                                local hit = workspace:FindPartOnRay(ray, player.Character)
-                                if hit then
-                                    root.CFrame = CFrame.new(_G.d6ReturnPos)
-                                    setStatus("D6 NUKE: RETURNED (" .. _G.d6TpCount .. "/3)", 0, 255, 140)
+                            if _G.d6TpCount < 3 then
+                                -- ТП в House.Pol
+                                local house = d6:FindFirstChild("House")
+                                local pol = house and house:FindFirstChild("Pol")
+                                if pol then
+                                    root.CFrame = CFrame.new(pol.Position + Vector3.new(0, 4, 0))
+                                    setStatus("D6 NUKE: RETURNED TO HOUSE.POL (" .. _G.d6TpCount .. "/3)", 0, 255, 140)
                                 else
-                                    local safeFound = false
-                                    for attempt = 1, 8 do
-                                        local rx = math.random(-20, 20)
-                                        local rz = math.random(-20, 20)
-                                        local testPos = _G.d6ReturnPos + Vector3.new(rx, 0, rz)
-                                        local testRay = Ray.new(testPos + Vector3.new(0, 10, 0), Vector3.new(0, -30, 0))
-                                        if workspace:FindPartOnRay(testRay, player.Character) then
-                                            root.CFrame = CFrame.new(testPos)
-                                            safeFound = true
-                                            setStatus("D6 NUKE: RETURNED NEARBY (" .. _G.d6TpCount .. "/3)", 0, 255, 140)
-                                            break
-                                        end
-                                    end
-                                    if not safeFound then
-                                        setStatus("D6 NUKE: STAYING IN SAFEZONE", 255, 150, 0)
-                                    end
+                                    setStatus("D6 NUKE: HOUSE.POL NOT FOUND", 255, 150, 0)
                                 end
                             else
-                                _G.d6ReturnPos = nil
+                                -- Последний раз — остаёмся в safeZone
                                 setStatus("D6 NUKE: 3 TP DONE, ROAMING", 0, 200, 100)
                             end
                         end
