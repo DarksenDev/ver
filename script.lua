@@ -1033,26 +1033,42 @@ task.spawn(function()
                 hum:MoveTo(root.Position)
 
             -- ── ОРУЖИЕ (Sword / RocketLauncher) ──────────────
+                        -- ── ОРУЖИЕ (Sword / RocketLauncher) ──────────────
             elseif weapon then
-                cleanupExtras()
+                -- НЕ вызываем cleanupExtras() чтобы не сбрасывать оружие
+                destroyShield()
+                if standPart and standPart.Parent then standPart:Destroy() standPart = nil end
+                d10Initialized = false
                 
+                -- Экипируем оружие если оно в рюкзаке
                 if weapon.Parent == player.Backpack then
                     hum:EquipTool(weapon)
-                    task.wait(0.15)
+                    task.wait(0.2)
                 end
                 
-                weapon = char:FindFirstChild("ClassicSword") or char:FindFirstChild("RocketLauncher")
-                if not weapon then
+                -- ПРОВЕРЯЕМ ОРУЖИЕ В РУКАХ ПОСЛЕ ЭКИПИРОВКИ
+                local equippedWeapon = char:FindFirstChild("ClassicSword") or char:FindFirstChild("RocketLauncher")
+                
+                if not equippedWeapon then
+                    -- Не в руках — пробуем ещё раз
+                    weapon.Parent = char
+                    task.wait(0.2)
+                    equippedWeapon = char:FindFirstChild("ClassicSword") or char:FindFirstChild("RocketLauncher")
+                end
+                
+                if not equippedWeapon then
+                    -- Вообще не получилось — сбрасываем и роумим
                     targetOverride = nil
                     isHoldingRocket = false
-                    setStatus("ROAMING (NO WEAPON EQUIPPED)", 0, 255, 140)
+                    setStatus("ROAMING (CAN'T EQUIP)", 0, 255, 140)
                     if not wanderTarget or (root.Position - wanderTarget).Magnitude < 4 then
                         wanderTarget = getLocalWanderPos(root)
                     end
                     walkDirect(wanderTarget)
                 else
-                    isHoldingRocket = (weapon.Name == "RocketLauncher")
+                    isHoldingRocket = (equippedWeapon.Name == "RocketLauncher")
                     
+                    -- Ищем ближайшего живого игрока
                     local target, targetPlayer = nil, nil
                     local bestDist = 1000
                     for _, p in ipairs(game.Players:GetPlayers()) do
@@ -1071,10 +1087,14 @@ task.spawn(function()
                     
                     if target and targetPlayer then
                         targetOverride = target
+                        
+                        -- ПОВОРАЧИВАЕМСЯ К ЦЕЛИ
                         root.CFrame = CFrame.new(root.Position, Vector3.new(target.Position.X, root.Position.Y, target.Position.Z))
                         
                         if isHoldingRocket then
+                            -- ROCKET LAUNCHER
                             setStatus("ROCKET: FIRING AT " .. targetPlayer.Name, 255, 80, 0)
+                            
                             if bestDist > 25 then
                                 hum:MoveTo(target.Position)
                             elseif bestDist < 12 then
@@ -1083,17 +1103,25 @@ task.spawn(function()
                             else
                                 hum:MoveTo(root.Position)
                             end
+                            
                             local cam = workspace.CurrentCamera
                             if cam then cam.CFrame = CFrame.new(cam.CFrame.Position, target.Position) end
-                            pcall(function() weapon:Activate() end)
+                            pcall(function() equippedWeapon:Activate() end)
+                            
                         else
+                            -- CLASSIC SWORD: БЕЖИМ К ЦЕЛИ И МАШЕМ
                             setStatus("SWORD: ATTACKING " .. targetPlayer.Name, 255, 60, 0)
+                            
+                            -- ПРЯМОЕ ДВИЖЕНИЕ К ЦЕЛИ
                             hum:MoveTo(target.Position)
-                            pcall(function() weapon:Activate() end)
-                            task.wait(0.05)
-                            pcall(function() weapon:Activate() end)
+                            
+                            -- МАШЕМ МЕЧОМ
+                            pcall(function() equippedWeapon:Activate() end)
+                            task.wait(0.04)
+                            pcall(function() equippedWeapon:Activate() end)
                         end
                     else
+                        -- Нет целей — роумим
                         targetOverride = nil
                         isHoldingRocket = false
                         setStatus("ROAMING (NO TARGETS)", 0, 255, 140)
@@ -1102,7 +1130,7 @@ task.spawn(function()
                         end
                         walkDirect(wanderTarget)
                     end
-                end
+                        end
 
             -- ── WIN PART ─────────────────────────────────────
             elseif winPart and not winReached then
