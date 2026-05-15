@@ -1033,7 +1033,6 @@ task.spawn(function()
                 hum:MoveTo(root.Position)
 
             -- ── ОРУЖИЕ (Sword / RocketLauncher) ──────────────
-                        -- ── ОРУЖИЕ (Sword / RocketLauncher) ──────────────
             elseif weapon then
                 -- НЕ вызываем cleanupExtras() чтобы не сбрасывать оружие
                 destroyShield()
@@ -1130,7 +1129,7 @@ task.spawn(function()
                         end
                         walkDirect(wanderTarget)
                     end
-                        end
+                end
 
             -- ── WIN PART ─────────────────────────────────────
             elseif winPart and not winReached then
