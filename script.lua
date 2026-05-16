@@ -1016,8 +1016,9 @@ task.spawn(function()
                 hum:MoveTo(root.Position)
 
             -- ── ОРУЖИЕ (Sword / RocketLauncher) ──────────────
+                        -- ── ОРУЖИЕ (Sword / RocketLauncher) ──────────────
             elseif weapon then
-                -- НЕ вызываем cleanupExtras() чтобы не сбрасывать оружие
+                -- НЕ вызываем cleanupExtras()
                 destroyShield()
                 if standPart and standPart.Parent then standPart:Destroy() standPart = nil end
                 d10Initialized = false
@@ -1028,18 +1029,16 @@ task.spawn(function()
                     task.wait(0.2)
                 end
                 
-                -- ПРОВЕРЯЕМ ОРУЖИЕ В РУКАХ ПОСЛЕ ЭКИПИРОВКИ
+                -- ПРОВЕРЯЕМ ОРУЖИЕ В РУКАХ
                 local equippedWeapon = char:FindFirstChild("ClassicSword") or char:FindFirstChild("RocketLauncher")
                 
                 if not equippedWeapon then
-                    -- Не в руках — пробуем ещё раз
                     weapon.Parent = char
                     task.wait(0.2)
                     equippedWeapon = char:FindFirstChild("ClassicSword") or char:FindFirstChild("RocketLauncher")
                 end
                 
                 if not equippedWeapon then
-                    -- Вообще не получилось — сбрасываем и роумим
                     targetOverride = nil
                     isHoldingRocket = false
                     setStatus("ROAMING (CAN'T EQUIP)", 0, 255, 140)
@@ -1068,14 +1067,13 @@ task.spawn(function()
                     end
                     
                     if target and targetPlayer then
-                        targetOverride = target
-                        
-                        -- ПОВОРАЧИВАЕМСЯ К ЦЕЛИ
-                        root.CFrame = CFrame.new(root.Position, Vector3.new(target.Position.X, root.Position.Y, target.Position.Z))
-                        
                         if isHoldingRocket then
                             -- ROCKET LAUNCHER
+                            targetOverride = target
                             setStatus("ROCKET: FIRING AT " .. targetPlayer.Name, 255, 80, 0)
+                            
+                            -- Поворот к цели
+                            root.CFrame = CFrame.new(root.Position, Vector3.new(target.Position.X, root.Position.Y, target.Position.Z))
                             
                             if bestDist > 25 then
                                 hum:MoveTo(target.Position)
@@ -1091,19 +1089,21 @@ task.spawn(function()
                             pcall(function() equippedWeapon:Activate() end)
                             
                         else
-                            -- CLASSIC SWORD: БЕЖИМ К ЦЕЛИ И МАШЕМ
+                            -- CLASSIC SWORD: БЕЖИМ И МАШЕМ (ФИКС)
+                            targetOverride = nil
                             setStatus("SWORD: ATTACKING " .. targetPlayer.Name, 255, 60, 0)
                             
-                            -- ПРЯМОЕ ДВИЖЕНИЕ К ЦЕЛИ
-                            hum:MoveTo(target.Position)
+                            -- ПРЯМОЕ ПРЕСЛЕДОВАНИЕ — каждый тик обновляем MoveTo
+                            local swordTargetPos = target.Position
+                            hum:MoveTo(swordTargetPos)
                             
-                            -- МАШЕМ МЕЧОМ
-                            pcall(function() equippedWeapon:Activate() end)
-                            task.wait(0.04)
+                            -- Поворачиваемся к цели
+                            root.CFrame = CFrame.new(root.Position, Vector3.new(target.Position.X, root.Position.Y, target.Position.Z))
+                            
+                            -- Активируем меч
                             pcall(function() equippedWeapon:Activate() end)
                         end
                     else
-                        -- Нет целей — роумим
                         targetOverride = nil
                         isHoldingRocket = false
                         setStatus("ROAMING (NO TARGETS)", 0, 255, 140)
