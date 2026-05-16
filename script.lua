@@ -1016,102 +1016,87 @@ task.spawn(function()
                 hum:MoveTo(root.Position)
 
             -- ── ОРУЖИЕ (Sword / RocketLauncher) ──────────────
-                        -- ── ОРУЖИЕ (Sword / RocketLauncher) ──────────────
             elseif weapon then
-                -- НЕ вызываем cleanupExtras()
                 destroyShield()
                 if standPart and standPart.Parent then standPart:Destroy() standPart = nil end
                 d10Initialized = false
+                targetOverride = nil
+                isHoldingRocket = false
                 
-                -- Экипируем оружие если оно в рюкзаке
+                -- Определяем тип оружия ДО экипировки
+                local isSword = (weapon.Name == "ClassicSword")
+                local isRocket = (weapon.Name == "RocketLauncher")
+                
+                -- Экипируем если в рюкзаке
                 if weapon.Parent == player.Backpack then
                     hum:EquipTool(weapon)
-                    task.wait(0.2)
                 end
                 
-                -- ПРОВЕРЯЕМ ОРУЖИЕ В РУКАХ
-                local equippedWeapon = char:FindFirstChild("ClassicSword") or char:FindFirstChild("RocketLauncher")
-                
-                if not equippedWeapon then
-                    weapon.Parent = char
-                    task.wait(0.2)
-                    equippedWeapon = char:FindFirstChild("ClassicSword") or char:FindFirstChild("RocketLauncher")
+                -- Ищем ближайшего живого игрока
+                local target, targetPlayer = nil, nil
+                local bestDist = 1000
+                for _, p in ipairs(game.Players:GetPlayers()) do
+                    if p ~= player and p.Character
+                    and p.Character:FindFirstChild("HumanoidRootPart")
+                    and p.Character:FindFirstChildOfClass("Humanoid")
+                    and p.Character.Humanoid.Health > 0 then
+                        local d = (root.Position - p.Character.HumanoidRootPart.Position).Magnitude
+                        if d < bestDist then
+                            bestDist = d
+                            target = p.Character.HumanoidRootPart
+                            targetPlayer = p
+                        end
+                    end
                 end
                 
-                if not equippedWeapon then
-                    targetOverride = nil
-                    isHoldingRocket = false
-                    setStatus("ROAMING (CAN'T EQUIP)", 0, 255, 140)
+                if target and targetPlayer then
+                    if isRocket then
+                        -- ROCKET LAUNCHER
+                        isHoldingRocket = true
+                        targetOverride = target
+                        setStatus("ROCKET: FIRING AT " .. targetPlayer.Name, 255, 80, 0)
+                        
+                        root.CFrame = CFrame.new(root.Position, Vector3.new(target.Position.X, root.Position.Y, target.Position.Z))
+                        
+                        if bestDist > 25 then
+                            hum:MoveTo(target.Position)
+                        elseif bestDist < 12 then
+                            local back = root.Position + (root.Position - target.Position).Unit * 15
+                            hum:MoveTo(back)
+                        else
+                            hum:MoveTo(root.Position)
+                        end
+                        
+                        local cam = workspace.CurrentCamera
+                        if cam then cam.CFrame = CFrame.new(cam.CFrame.Position, target.Position) end
+                        
+                        -- Активируем то что в руках
+                        local heldWeapon = char:FindFirstChild("RocketLauncher")
+                        if heldWeapon then pcall(function() heldWeapon:Activate() end) end
+                        
+                    else
+                        -- CLASSIC SWORD — ТУПО БЕЖИМ И МАШЕМ
+                        setStatus("SWORD: RUSHING " .. targetPlayer.Name, 255, 60, 0)
+                        
+                        -- Поворот к цели
+                        root.CFrame = CFrame.new(root.Position, Vector3.new(target.Position.X, root.Position.Y, target.Position.Z))
+                        
+                        -- ДВИЖЕНИЕ К ЦЕЛИ
+                        hum:MoveTo(target.Position)
+                        
+                        -- МАШЕМ МЕЧОМ
+                        local heldSword = char:FindFirstChild("ClassicSword")
+                        if heldSword then
+                            pcall(function() heldSword:Activate() end)
+                        end
+                    end
+                else
+                    -- Нет целей — роумим
+                    setStatus("ROAMING (NO TARGETS)", 0, 255, 140)
                     if not wanderTarget or (root.Position - wanderTarget).Magnitude < 4 then
                         wanderTarget = getLocalWanderPos(root)
                     end
                     walkDirect(wanderTarget)
-                else
-                    isHoldingRocket = (equippedWeapon.Name == "RocketLauncher")
-                    
-                    -- Ищем ближайшего живого игрока
-                    local target, targetPlayer = nil, nil
-                    local bestDist = 1000
-                    for _, p in ipairs(game.Players:GetPlayers()) do
-                        if p ~= player and p.Character
-                        and p.Character:FindFirstChild("HumanoidRootPart")
-                        and p.Character:FindFirstChildOfClass("Humanoid")
-                        and p.Character.Humanoid.Health > 0 then
-                            local d = (root.Position - p.Character.HumanoidRootPart.Position).Magnitude
-                            if d < bestDist then
-                                bestDist = d
-                                target = p.Character.HumanoidRootPart
-                                targetPlayer = p
-                            end
-                        end
-                    end
-                    
-                    if target and targetPlayer then
-                        if isHoldingRocket then
-                            -- ROCKET LAUNCHER
-                            targetOverride = target
-                            setStatus("ROCKET: FIRING AT " .. targetPlayer.Name, 255, 80, 0)
-                            
-                            -- Поворот к цели
-                            root.CFrame = CFrame.new(root.Position, Vector3.new(target.Position.X, root.Position.Y, target.Position.Z))
-                            
-                            if bestDist > 25 then
-                                hum:MoveTo(target.Position)
-                            elseif bestDist < 12 then
-                                local back = root.Position + (root.Position - target.Position).Unit * 15
-                                hum:MoveTo(back)
-                            else
-                                hum:MoveTo(root.Position)
-                            end
-                            
-                            local cam = workspace.CurrentCamera
-                            if cam then cam.CFrame = CFrame.new(cam.CFrame.Position, target.Position) end
-                            pcall(function() equippedWeapon:Activate() end)
-                            
-                        else
-                            -- CLASSIC SWORD: БЕЖИМ И МАШЕМ (ФИКС)
-                            targetOverride = nil
-                            setStatus("SWORD: ATTACKING " .. targetPlayer.Name, 255, 60, 0)
-                            
-                            -- ПРЯМОЕ ПРЕСЛЕДОВАНИЕ — каждый тик обновляем MoveTo
-                            local swordTargetPos = target.Position
-                            hum:MoveTo(swordTargetPos)
-                            
-                            -- Поворачиваемся к цели
-                            root.CFrame = CFrame.new(root.Position, Vector3.new(target.Position.X, root.Position.Y, target.Position.Z))
-                            
-                            -- Активируем меч
-                            pcall(function() equippedWeapon:Activate() end)
-                        end
-                    else
-                        targetOverride = nil
-                        isHoldingRocket = false
-                        setStatus("ROAMING (NO TARGETS)", 0, 255, 140)
-                        if not wanderTarget or (root.Position - wanderTarget).Magnitude < 4 then
-                            wanderTarget = getLocalWanderPos(root)
-                        end
-                        walkDirect(wanderTarget)
-                    end
                 end
 
             -- ── WIN PART ─────────────────────────────────────
