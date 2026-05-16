@@ -1015,7 +1015,7 @@ task.spawn(function()
                 setStatus("TYCOON: WIN DONE, WAITING", 0, 255, 140)
                 hum:MoveTo(root.Position)
 
-            -- ── ОРУЖИЕ (Sword / RocketLauncher) ──────────────
+                       -- ── ОРУЖИЕ (Sword / RocketLauncher) ──────────────
             elseif weapon then
                 destroyShield()
                 if standPart and standPart.Parent then standPart:Destroy() standPart = nil end
@@ -1023,80 +1023,100 @@ task.spawn(function()
                 targetOverride = nil
                 isHoldingRocket = false
                 
-                -- Определяем тип оружия ДО экипировки
-                local isSword = (weapon.Name == "ClassicSword")
-                local isRocket = (weapon.Name == "RocketLauncher")
-                
-                -- Экипируем если в рюкзаке
-                if weapon.Parent == player.Backpack then
-                    hum:EquipTool(weapon)
-                end
-                
-                -- Ищем ближайшего живого игрока
-                local target, targetPlayer = nil, nil
-                local bestDist = 1000
-                for _, p in ipairs(game.Players:GetPlayers()) do
-                    if p ~= player and p.Character
-                    and p.Character:FindFirstChild("HumanoidRootPart")
-                    and p.Character:FindFirstChildOfClass("Humanoid")
-                    and p.Character.Humanoid.Health > 0 then
-                        local d = (root.Position - p.Character.HumanoidRootPart.Position).Magnitude
-                        if d < bestDist then
-                            bestDist = d
-                            target = p.Character.HumanoidRootPart
-                            targetPlayer = p
-                        end
-                    end
-                end
-                
-                if target and targetPlayer then
-                    if isRocket then
-                        -- ROCKET LAUNCHER
-                        isHoldingRocket = true
-                        targetOverride = target
-                        setStatus("ROCKET: FIRING AT " .. targetPlayer.Name, 255, 80, 0)
-                        
-                        root.CFrame = CFrame.new(root.Position, Vector3.new(target.Position.X, root.Position.Y, target.Position.Z))
-                        
-                        if bestDist > 25 then
-                            hum:MoveTo(target.Position)
-                        elseif bestDist < 12 then
-                            local back = root.Position + (root.Position - target.Position).Unit * 15
-                            hum:MoveTo(back)
-                        else
-                            hum:MoveTo(root.Position)
-                        end
-                        
-                        local cam = workspace.CurrentCamera
-                        if cam then cam.CFrame = CFrame.new(cam.CFrame.Position, target.Position) end
-                        
-                        -- Активируем то что в руках
-                        local heldWeapon = char:FindFirstChild("RocketLauncher")
-                        if heldWeapon then pcall(function() heldWeapon:Activate() end) end
-                        
+                -- ПРИНУДИТЕЛЬНО ДОСТАЁМ ОРУЖИЕ
+                if weapon.Parent ~= char then
+                    -- Пробуем экипировать через EquipTool
+                    if weapon.Parent == player.Backpack then
+                        hum:EquipTool(weapon)
                     else
-                        -- CLASSIC SWORD — ТУПО БЕЖИМ И МАШЕМ
-                        setStatus("SWORD: RUSHING " .. targetPlayer.Name, 255, 60, 0)
-                        
-                        -- Поворот к цели
-                        root.CFrame = CFrame.new(root.Position, Vector3.new(target.Position.X, root.Position.Y, target.Position.Z))
-                        
-                        -- ДВИЖЕНИЕ К ЦЕЛИ
-                        hum:MoveTo(target.Position)
-                        
-                        -- МАШЕМ МЕЧОМ
-                        local heldSword = char:FindFirstChild("ClassicSword")
-                        if heldSword then
-                            pcall(function() heldSword:Activate() end)
-                        end
+                        -- Напрямую перемещаем в персонажа
+                        weapon.Parent = char
                     end
-                else
-                    -- Нет целей — роумим
-                    setStatus("ROAMING (NO TARGETS)", 0, 255, 140)
+                    -- Ждём один тик чтобы оружие появилось в руках
+                    task.wait(0.15)
+                end
+                
+                -- ПРОВЕРЯЕМ ЧТО ОРУЖИЕ ТОЧНО В РУКАХ
+                local heldSword = char:FindFirstChild("ClassicSword")
+                local heldRocket = char:FindFirstChild("RocketLauncher")
+                local heldWeapon = heldSword or heldRocket
+                
+                if not heldWeapon then
+                    -- ЕЩЁ РАЗ пробуем достать
+                    if weapon.Parent == player.Backpack then
+                        hum:EquipTool(weapon)
+                    else
+                        weapon.Parent = char
+                    end
+                    task.wait(0.2)
+                    heldSword = char:FindFirstChild("ClassicSword")
+                    heldRocket = char:FindFirstChild("RocketLauncher")
+                    heldWeapon = heldSword or heldRocket
+                end
+                
+                if not heldWeapon then
+                    -- СОВСЕМ не получилось — роумим
+                    setStatus("ROAMING (CAN'T EQUIP)", 0, 255, 140)
                     if not wanderTarget or (root.Position - wanderTarget).Magnitude < 4 then
                         wanderTarget = getLocalWanderPos(root)
                     end
                     walkDirect(wanderTarget)
+                else
+                    local isSword = (heldWeapon.Name == "ClassicSword")
+                    local isRocket = (heldWeapon.Name == "RocketLauncher")
+                    
+                    -- Ищем ближайшего живого игрока
+                    local target, targetPlayer = nil, nil
+                    local bestDist = 1000
+                    for _, p in ipairs(game.Players:GetPlayers()) do
+                        if p ~= player and p.Character
+                        and p.Character:FindFirstChild("HumanoidRootPart")
+                        and p.Character:FindFirstChildOfClass("Humanoid")
+                        and p.Character.Humanoid.Health > 0 then
+                            local d = (root.Position - p.Character.HumanoidRootPart.Position).Magnitude
+                            if d < bestDist then
+                                bestDist = d
+                                target = p.Character.HumanoidRootPart
+                                targetPlayer = p
+                            end
+                        end
+                    end
+                    
+                    if target and targetPlayer then
+                        if isRocket then
+                            -- ROCKET LAUNCHER
+                            isHoldingRocket = true
+                            targetOverride = target
+                            setStatus("ROCKET: FIRING AT " .. targetPlayer.Name, 255, 80, 0)
+                            root.CFrame = CFrame.new(root.Position, Vector3.new(target.Position.X, root.Position.Y, target.Position.Z))
+                            
+                            if bestDist > 25 then
+                                hum:MoveTo(target.Position)
+                            elseif bestDist < 12 then
+                                local back = root.Position + (root.Position - target.Position).Unit * 15
+                                hum:MoveTo(back)
+                            else
+                                hum:MoveTo(root.Position)
+                            end
+                            
+                            local cam = workspace.CurrentCamera
+                            if cam then cam.CFrame = CFrame.new(cam.CFrame.Position, target.Position) end
+                            pcall(function() heldWeapon:Activate() end)
+                            
+                        else
+                            -- CLASSIC SWORD
+                            setStatus("SWORD: RUSHING " .. targetPlayer.Name, 255, 60, 0)
+                            root.CFrame = CFrame.new(root.Position, Vector3.new(target.Position.X, root.Position.Y, target.Position.Z))
+                            hum:MoveTo(target.Position)
+                            pcall(function() heldWeapon:Activate() end)
+                        end
+                    else
+                        setStatus("ROAMING (NO TARGETS)", 0, 255, 140)
+                        if not wanderTarget or (root.Position - wanderTarget).Magnitude < 4 then
+                            wanderTarget = getLocalWanderPos(root)
+                        end
+                        walkDirect(wanderTarget)
+                    end
                 end
 
             -- ── WIN PART ─────────────────────────────────────
