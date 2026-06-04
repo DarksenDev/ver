@@ -1,6 +1,6 @@
 1. Ultimate Macro
     - Official Release
-    - New  Modern Gui
+    - New Modern Gui
 2. Tower Defense Macro
     - Added Auto-Update
     - Bug Fixes
