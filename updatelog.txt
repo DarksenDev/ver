@@ -1,3 +1,3 @@
-1. Tower Defense Simulator Strategy Macro
-    - BUG FIXES
-    - ADDED MODIFIERS SUPPORT
+1. Ultimate Macro
+    - Official Release
+    - New  Modern Gui
