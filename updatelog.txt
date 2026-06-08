@@ -1,7 +1,4 @@
 Ultimate Macro
-    - some fixes
+    - removed tinytask.exe
 Tower Defense Simulator:
-    -  New Hardcore & Voidcore Support
-    -  Added Wretched Front to default supported maps
-    -  Replaced 'Move down' setting with a different one
-    - Made Selecting Map much smarter
+    -  Bug fixes
